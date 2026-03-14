@@ -299,6 +299,7 @@
                 <option value="exp_smoothing">Exponential Smoothing</option>
                 <option value="pos_lag">POS-to-Shipment Lag</option>
                 <option value="consumption_rate">POS Consumption Rate</option>
+                <option value="linear_avg">Linear Average (Avg Weekly Run Rate)</option>
               </select>
             </div>
             <div>
@@ -566,8 +567,44 @@ function runForecastEngine(actuals, params, horizon) {
       const ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
       return consumptionRate(pos, ship, params.window, horizon);
     }
+    case 'linear_avg': return linearAverage(series, params, horizon);
     default: return weightedMovingAverage(series, params, horizon);
   }
+}
+
+// Linear Average — calculates avg weekly run rate over the lookback
+// window, then projects that flat rate forward for each future month
+// (adjusted for the number of weeks in each month).
+function linearAverage(actuals, params, horizon) {
+  if (!actuals.length) return [];
+  const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const win = Math.min(params.window, sorted.length);
+  const recent = sorted.slice(-win);
+
+  // Total volume over the lookback window
+  const totalVol = recent.reduce((s,p) => s + p.value, 0);
+
+  // Total weeks in the lookback window
+  let totalWeeks = 0;
+  for (const p of recent) {
+    const d = new Date(p.month);
+    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+    totalWeeks += daysInMonth / 7;
+  }
+
+  const avgWeeklyRate = totalWeeks > 0 ? totalVol / totalWeeks : 0;
+
+  const results = [];
+  const last = new Date(sorted[sorted.length - 1].month);
+  for (let i = 1; i <= horizon; i++) {
+    const fd = new Date(last);
+    fd.setMonth(fd.getMonth() + i + 1, 0); // end of month
+    const daysInMonth = fd.getDate();
+    const weeksInMonth = daysInMonth / 7;
+    const forecast = Math.round(avgWeeklyRate * weeksInMonth * 100) / 100;
+    results.push({ month: fd.toISOString().split('T')[0], statValue: forecast });
+  }
+  return results;
 }
 
 // ============================================================
