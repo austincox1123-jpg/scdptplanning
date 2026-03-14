@@ -114,6 +114,15 @@
     .result-stat .label { color: #16a34a; font-size: 14px; }
     .result-stat .value { font-size: 24px; font-weight: 700; color: #166534; }
     .list-disc { list-style-type: disc; padding-left: 20px; }
+    /* Saved forecasts panel */
+    .saved-panel { margin-top: 16px; }
+    .saved-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px; font-size: 12px; cursor: pointer; transition: background 0.1s; }
+    .saved-item:hover { background: #f9fafb; }
+    .saved-item.active { border-color: #2563eb; background: #eff6ff; }
+    .saved-item .saved-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #374151; }
+    .saved-item .saved-months { font-size: 11px; color: #9ca3af; margin-left: 8px; white-space: nowrap; }
+    .saved-count { font-size: 11px; color: #6b7280; margin-bottom: 8px; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
   </style>
 </head>
 <body>
@@ -192,7 +201,8 @@
         </div>
         <div class="flex gap-3">
           <button onclick="showUpload()" class="px-4 py-2 btn-outline">New Upload</button>
-          <button onclick="exportExcel()" class="px-4 py-2 btn-outline">Export Excel</button>
+          <button onclick="exportExcel()" class="px-4 py-2 btn-outline">Export View</button>
+          <button onclick="exportAllForecasts()" class="px-4 py-2 btn-outline">Export All</button>
         </div>
       </div>
     </nav>
@@ -288,6 +298,13 @@
             </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
           </div>
+
+          <!-- Saved Forecasts Panel -->
+          <div class="card p-4 saved-panel">
+            <h2 class="text-sm font-semibold text-gray-700 mb-2">Saved Forecasts</h2>
+            <p class="saved-count" id="saved-count">No forecasts saved yet</p>
+            <div id="saved-list"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -303,7 +320,8 @@ const state = {
   customers: [],
   products: [],
   filters: { customer: '', brand: '', type: '', formation: '', product: '' },
-  forecastResults: {},
+  forecastResults: {},   // key "customer|product" => [{month, statValue}]
+  skuForecasts: {},      // key "customer|productNumber" => [{month, statValue}] — disaggregated to SKU level
   overrides: {},
   hasPosData: false,
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
@@ -531,6 +549,7 @@ function showDashboard() {
   populateFilters();
   invalidateCache();
   renderDashboard();
+  renderSavedPanel();
 }
 
 // ============================================================
@@ -540,6 +559,7 @@ function loadData(rows, fileName) {
   state.parsedRows = rows;
   state.fileName = fileName;
   state.forecastResults = {};
+  state.skuForecasts = {};
   state.overrides = {};
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
   state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
@@ -657,7 +677,6 @@ function getConfigParams() {
 function runForecast() {
   try {
     showLoading('Calculating forecast...');
-    // Use requestAnimationFrame to let the loading overlay paint
     requestAnimationFrame(() => {
       try {
         const filtered = getFilteredRows();
@@ -678,8 +697,13 @@ function runForecast() {
         const results = runForecastEngine(actualData, params, 18);
         const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
         state.forecastResults[key] = results;
+
+        // Disaggregate to SKU level if viewing an aggregate (no specific product selected)
+        disaggregateForecast(filtered, results, params);
+
         invalidateCache();
         renderDashboard();
+        renderSavedPanel();
         hideLoading();
         showToast('Forecast calculated: ' + results.length + ' months', 'success');
       } catch (e) {
@@ -691,6 +715,110 @@ function runForecast() {
     hideLoading();
     showToast('Error: ' + e.message, 'error');
   }
+}
+
+// ============================================================
+// DISAGGREGATION — allocate aggregate forecast to SKU level
+// ============================================================
+function disaggregateForecast(filtered, aggregateResults, params) {
+  // Find unique customer+product combos in the filtered set
+  const combos = new Map(); // key "customer|product" => { customer, product, totalVolume }
+  const comboMonthVol = new Map(); // key "customer|product" => Map<month, volume>
+
+  for (const r of filtered) {
+    const src = params.source;
+    let vol = 0;
+    if (src === 'pos') vol = r.posCases || 0;
+    else if (src === 'invoice') vol = r.invoiceCases || 0;
+    else if (src === 'order') vol = r.orderCases || 0;
+    else vol = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
+    if (vol <= 0) continue;
+
+    const ck = r.customerName + '|' + r.productNumber;
+    if (!combos.has(ck)) {
+      combos.set(ck, { customer: r.customerName, product: r.productNumber, productName: r.productName, totalVolume: 0 });
+    }
+    combos.get(ck).totalVolume += vol;
+  }
+
+  if (combos.size <= 1) {
+    // Single SKU — just save directly
+    for (const [ck, combo] of combos) {
+      state.skuForecasts[ck] = aggregateResults.map(r => ({ ...r }));
+    }
+    return;
+  }
+
+  // Multiple SKUs — calculate proportional share and allocate
+  const totalVolume = [...combos.values()].reduce((s, c) => s + c.totalVolume, 0);
+  if (totalVolume <= 0) return;
+
+  for (const [ck, combo] of combos) {
+    const share = combo.totalVolume / totalVolume;
+    state.skuForecasts[ck] = aggregateResults.map(r => ({
+      month: r.month,
+      statValue: Math.round(r.statValue * share * 100) / 100,
+    }));
+  }
+}
+
+// ============================================================
+// SAVED FORECASTS PANEL
+// ============================================================
+function renderSavedPanel() {
+  const list = document.getElementById('saved-list');
+  const countEl = document.getElementById('saved-count');
+  const keys = Object.keys(state.skuForecasts);
+
+  if (keys.length === 0) {
+    countEl.textContent = 'No forecasts saved yet';
+    list.innerHTML = '';
+    return;
+  }
+
+  countEl.textContent = keys.length + ' SKU forecast' + (keys.length > 1 ? 's' : '') + ' saved';
+  const currentKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+
+  const frag = document.createDocumentFragment();
+  for (const key of keys) {
+    const [cust, prod] = key.split('|');
+    const months = state.skuForecasts[key].length;
+    const hasOverrides = Object.keys(state.overrides).some(k => k.startsWith(key + '|'));
+
+    const div = document.createElement('div');
+    div.className = 'saved-item' + (key === currentKey ? ' active' : '');
+    div.innerHTML = '<span class="saved-label"><strong>' + sanitize(cust) + '</strong> / ' + sanitize(prod) +
+      (hasOverrides ? ' *' : '') + '</span><span class="saved-months">' + months + ' mo</span>';
+    div.onclick = () => jumpToForecast(cust, prod);
+    frag.appendChild(div);
+  }
+  list.textContent = '';
+  list.appendChild(frag);
+}
+
+function jumpToForecast(customer, product) {
+  // Set filters to this specific combo
+  state.filters.customer = customer;
+  state.filters.product = product;
+  state.filters.brand = '';
+  state.filters.type = '';
+  state.filters.formation = '';
+
+  document.getElementById('filter-customer').value = customer;
+  document.getElementById('filter-product').value = product;
+  document.getElementById('filter-brand').value = '';
+  document.getElementById('filter-type').value = '';
+  document.getElementById('filter-formation').value = '';
+
+  // Load the SKU forecast into forecastResults for display
+  const key = customer + '|' + product;
+  if (state.skuForecasts[key]) {
+    state.forecastResults[key] = state.skuForecasts[key];
+  }
+
+  invalidateCache();
+  renderDashboard();
+  renderSavedPanel();
 }
 
 // ============================================================
@@ -755,6 +883,7 @@ function renderDashboard() {
     const rows = getDashboardRows();
     renderChart(rows);
     renderGrid(rows);
+    renderSavedPanel();
   } catch (e) {
     showToast('Render error: ' + e.message, 'error');
   }
@@ -860,6 +989,80 @@ function exportExcel() {
         XLSX.writeFile(wb, 'forecast_' + (state.filters.customer||'all') + '_' + (state.filters.product||'all') + '.xlsx');
         hideLoading();
         showToast('Excel exported successfully', 'success');
+      } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
+    });
+  } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
+}
+
+// ============================================================
+// EXPORT ALL — every saved SKU forecast in one workbook
+// ============================================================
+function exportAllForecasts() {
+  const keys = Object.keys(state.skuForecasts);
+  if (keys.length === 0) { showToast('No forecasts to export. Run a forecast first.', 'error'); return; }
+
+  try {
+    showLoading('Exporting all forecasts...');
+    requestAnimationFrame(() => {
+      try {
+        const wb = XLSX.utils.book_new();
+
+        // Summary tab — one row per SKU with config info
+        const summary = keys.map(key => {
+          const [cust, prod] = key.split('|');
+          const results = state.skuForecasts[key];
+          const overrideCount = Object.keys(state.overrides).filter(k => k.startsWith(key + '|')).length;
+          return { Customer: cust, Product: prod, 'Forecast Months': results.length, Overrides: overrideCount };
+        });
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
+
+        // One tab per SKU forecast (sheet name limited to 31 chars)
+        for (const key of keys) {
+          const [cust, prod] = key.split('|');
+          const results = state.skuForecasts[key];
+          const overridePrefix = key + '|';
+
+          // Get actuals for this combo
+          const actuals = state.parsedRows.filter(r => r.customerName === cust && r.productNumber === prod);
+          const actualMap = new Map();
+          const existingMap = new Map();
+          for (const r of actuals) {
+            if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+              actualMap.set(r.month, { pos: r.posCases, invoice: r.invoiceCases, order: r.orderCases });
+            }
+            if (r.forecast != null) existingMap.set(r.month, r.forecast);
+          }
+          const statMap = new Map(results.map(r => [r.month, r.statValue]));
+
+          const allMonths = new Set();
+          actualMap.forEach((_,m) => allMonths.add(m));
+          existingMap.forEach((_,m) => allMonths.add(m));
+          statMap.forEach((_,m) => allMonths.add(m));
+
+          const sheetRows = [...allMonths].sort().map(month => {
+            const act = actualMap.get(month);
+            const existing = existingMap.get(month);
+            const stat = statMap.get(month);
+            const ov = state.overrides[overridePrefix + month];
+            return {
+              Month: month,
+              'POS Cases': act ? act.pos : null,
+              'Invoice Cases': act ? act.invoice : null,
+              'Order Cases': act ? act.order : null,
+              'Existing Forecast': existing ?? null,
+              'Stat Forecast': stat ?? null,
+              Override: ov ?? null,
+              Final: ov ?? stat ?? existing ?? null,
+            };
+          });
+
+          const sheetName = (cust + '_' + prod).substring(0, 31);
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), sheetName);
+        }
+
+        XLSX.writeFile(wb, 'forecast_all_skus.xlsx');
+        hideLoading();
+        showToast('Exported ' + keys.length + ' SKU forecasts', 'success');
       } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
     });
   } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
