@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sales Forecasting Engine</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: 600; }
+    .override-cell { background-color: #dcfce7; color: #166534; font-weight: bold; }
+    table.data-grid { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.data-grid th { background: #f9fafb; position: sticky; top: 0; z-index: 1; text-align: left; padding: 8px 12px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
+    table.data-grid td { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; }
+    table.data-grid tr:hover { background: #f9fafb; }
+    table.data-grid input { width: 80px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; text-align: right; }
+    table.data-grid input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
+    .grid-container { max-height: 450px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="bg-gray-50 text-gray-900">
+
+  <!-- ===== UPLOAD VIEW ===== -->
+  <div id="upload-view" class="min-h-screen flex flex-col">
+    <nav class="border-b bg-white">
+      <div class="max-w-5xl mx-auto px-4 h-14 flex items-center">
+        <span class="text-lg font-semibold">Sales Forecast</span>
+      </div>
+    </nav>
+    <div class="flex-1 flex items-center justify-center">
+      <div class="max-w-2xl w-full px-4">
+        <h1 class="text-3xl font-bold text-center mb-2">Sales Forecasting Engine</h1>
+        <p class="text-gray-500 text-center mb-8">Upload your Excel file to get started. Everything runs in your browser.</p>
+
+        <div class="mb-6 bg-gray-50 border rounded-lg p-4">
+          <h3 class="text-sm font-semibold text-gray-700 mb-2">Expected Columns</h3>
+          <div class="grid grid-cols-2 md:grid-cols-3 gap-1 text-xs text-gray-600">
+            <span class="font-mono bg-white px-2 py-1 rounded border">CUSTOMER_NAME *</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">PRODUCTNUMBER *</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">END_OF_MONTH_EPOCH *</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">BRAND</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">TYPE</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">FORMATION</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">PRODUCTNAME</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">POS CASES</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">INVOICE CASES</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">ORDER CASES</span>
+            <span class="font-mono bg-white px-2 py-1 rounded border">FORECAST</span>
+          </div>
+          <p class="text-xs text-gray-400 mt-2">* Required columns</p>
+        </div>
+
+        <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-gray-400 transition-colors">
+          <p class="text-gray-600" id="drop-text">Drag and drop your .xlsx or .csv file here, or click to browse</p>
+          <input type="file" id="file-input" accept=".xlsx,.csv" class="hidden">
+        </div>
+
+        <div id="upload-error" class="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm hidden"></div>
+
+        <button id="process-btn" class="mt-6 w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium hidden">
+          Process File
+        </button>
+
+        <div id="upload-result" class="mt-6 bg-green-50 border border-green-200 rounded-lg p-6 hidden">
+          <h3 class="font-semibold text-green-800 mb-3">File Processed Successfully</h3>
+          <div class="grid grid-cols-3 gap-4 text-sm">
+            <div><p class="text-green-600">Rows</p><p class="text-2xl font-bold text-green-800" id="result-rows">0</p></div>
+            <div><p class="text-green-600">Customers</p><p class="text-2xl font-bold text-green-800" id="result-customers">0</p></div>
+            <div><p class="text-green-600">Products</p><p class="text-2xl font-bold text-green-800" id="result-products">0</p></div>
+          </div>
+          <div id="result-warnings" class="mt-4 text-sm text-yellow-700 hidden"></div>
+          <button id="go-dashboard-btn" class="mt-4 px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 font-medium">
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DASHBOARD VIEW ===== -->
+  <div id="dashboard-view" class="min-h-screen hidden">
+    <nav class="border-b bg-white">
+      <div class="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+        <div class="flex items-center gap-6">
+          <span class="text-lg font-semibold">Sales Forecast</span>
+          <span class="text-sm text-gray-500" id="file-info"></span>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="showUpload()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">New Upload</button>
+          <button onclick="exportExcel()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">Export Excel</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <!-- Filters -->
+      <div class="bg-white border rounded-lg p-4 flex flex-wrap gap-4 items-end">
+        <div class="flex-1 min-w-[160px]">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Customer</label>
+          <select id="filter-customer" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All Customers</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[140px]">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Brand</label>
+          <select id="filter-brand" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All Brands</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[140px]">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Type</label>
+          <select id="filter-type" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All Types</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[140px]">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Formation</label>
+          <select id="filter-formation" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All Formations</option>
+          </select>
+        </div>
+        <div class="flex-1 min-w-[200px]">
+          <label class="block text-xs font-medium text-gray-500 mb-1">Product</label>
+          <select id="filter-product" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
+            <option value="">All Products</option>
+          </select>
+        </div>
+        <button onclick="resetFilters()" class="px-3 py-2 text-sm text-gray-500 hover:text-gray-700">Reset</button>
+      </div>
+
+      <div class="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
+        <!-- Main content -->
+        <div class="lg:col-span-3">
+          <!-- Chart -->
+          <div class="bg-white border rounded-lg p-6">
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Sales & Forecast Trend</h2>
+            <div style="height:350px; position:relative;">
+              <canvas id="forecast-chart"></canvas>
+            </div>
+          </div>
+          <!-- Data grid -->
+          <div class="mt-6 bg-white border rounded-lg overflow-hidden">
+            <div class="grid-container" id="grid-container">
+              <table class="data-grid" id="data-grid">
+                <thead><tr>
+                  <th>Month</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Override</th><th class="num">Final</th>
+                </tr></thead>
+                <tbody id="grid-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Config sidebar -->
+        <div class="lg:col-span-1">
+          <div class="bg-white border rounded-lg p-4 space-y-4">
+            <h2 class="text-sm font-semibold text-gray-700">Forecast Configuration</h2>
+
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Method</label>
+              <select id="cfg-method" onchange="onConfigChange()" class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white">
+                <option value="weighted_ma">Weighted Moving Average</option>
+                <option value="exp_smoothing">Exponential Smoothing</option>
+                <option value="pos_lag">POS-to-Shipment Lag</option>
+                <option value="consumption_rate">POS Consumption Rate</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Data Source</label>
+              <select id="cfg-source" class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white">
+                <option value="pos">POS Cases</option>
+                <option value="invoice" selected>Invoice Cases</option>
+                <option value="order">Order Cases</option>
+                <option value="blended">Blended</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-xs font-medium text-gray-500 mb-1">Lookback Window: <span id="window-val">6</span> months</label>
+              <input type="range" id="cfg-window" min="3" max="24" value="6" oninput="document.getElementById('window-val').textContent=this.value" class="w-full">
+              <div class="flex justify-between text-xs text-gray-400"><span>3</span><span>24</span></div>
+            </div>
+
+            <div id="weight-section">
+              <label class="block text-xs font-medium text-gray-500 mb-1">Weight Profile</label>
+              <select id="cfg-weights" class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white">
+                <option value="equal">Equal</option>
+                <option value="linear_decay" selected>Linear Decay (recent = higher)</option>
+              </select>
+            </div>
+
+            <div id="alpha-section" class="hidden">
+              <label class="block text-xs font-medium text-gray-500 mb-1">Alpha: <span id="alpha-val">0.3</span></label>
+              <input type="range" id="cfg-alpha" min="0.1" max="0.9" step="0.1" value="0.3" oninput="document.getElementById('alpha-val').textContent=parseFloat(this.value).toFixed(1)" class="w-full">
+              <div class="flex justify-between text-xs text-gray-400"><span>0.1 (smooth)</span><span>0.9 (reactive)</span></div>
+            </div>
+
+            <div class="flex items-center gap-2">
+              <input type="checkbox" id="cfg-seasonality" class="rounded border-gray-300">
+              <label for="cfg-seasonality" class="text-xs text-gray-600">Apply seasonal indices</label>
+            </div>
+
+            <button onclick="runForecast()" class="w-full py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
+              Recalculate
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// ============================================================
+// STATE
+// ============================================================
+const state = {
+  parsedRows: [],       // raw parsed rows from upload
+  fileName: null,
+  customers: [],        // unique {name}
+  products: [],         // unique {productNumber, productName, brand, type, formation}
+  filters: { customer: '', brand: '', type: '', formation: '', product: '' },
+  forecastResults: {},   // key "customer|product" => [{month, statValue}]
+  overrides: {},         // key "customer|product|month" => number
+  hasPosData: false,
+};
+
+let chart = null; // Chart.js instance
+
+// ============================================================
+// COLUMN MAPPING
+// ============================================================
+const COLUMN_MAP = {
+  'CUSTOMER_NAME': 'customerName',
+  'BRAND': 'brand',
+  'TYPE': 'type',
+  'FORMATION': 'formation',
+  'PRODUCTNAME': 'productName',
+  'PRODUCTNUMBER': 'productNumber',
+  'END_OF_MONTH_EPOCH': 'endOfMonthEpoch',
+  'POS CASES': 'posCases',
+  'INVOICE CASES': 'invoiceCases',
+  'ORDER CASES': 'orderCases',
+  'FORECAST': 'forecast',
+};
+const REQUIRED = ['CUSTOMER_NAME', 'PRODUCTNUMBER', 'END_OF_MONTH_EPOCH'];
+
+function mapRow(raw, headers) {
+  const mapped = {};
+  for (const h of headers) {
+    const key = COLUMN_MAP[h.trim().toUpperCase()];
+    if (key) mapped[key] = raw[h];
+  }
+  return mapped;
+}
+
+// ============================================================
+// EXCEL PARSER
+// ============================================================
+function parseFile(buffer) {
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) return { success: false, rows: [], errors: ['No sheets found'] };
+
+  const rawData = XLSX.utils.sheet_to_json(sheet);
+  if (!rawData.length) return { success: false, rows: [], errors: ['Sheet is empty'] };
+
+  const headers = Object.keys(rawData[0]);
+  const upperHeaders = headers.map(h => h.trim().toUpperCase());
+  const missing = REQUIRED.filter(c => !upperHeaders.includes(c));
+  if (missing.length) return { success: false, rows: [], errors: ['Missing columns: ' + missing.join(', ')] };
+
+  const rows = [], errors = [];
+  for (let i = 0; i < rawData.length; i++) {
+    const m = mapRow(rawData[i], headers);
+    const customerName = String(m.customerName || '').trim();
+    const productNumber = String(m.productNumber || '').trim();
+    if (!customerName) { errors.push('Row ' + (i+2) + ': Missing CUSTOMER_NAME'); continue; }
+    if (!productNumber) { errors.push('Row ' + (i+2) + ': Missing PRODUCTNUMBER'); continue; }
+
+    let month;
+    const raw = m.endOfMonthEpoch;
+    if (typeof raw === 'number') {
+      const d = XLSX.SSF.parse_date_code(raw);
+      month = d.y + '-' + String(d.m).padStart(2,'0') + '-' + String(d.d).padStart(2,'0');
+    } else {
+      const parsed = new Date(String(raw));
+      if (isNaN(parsed.getTime())) { errors.push('Row '+(i+2)+': Invalid date'); continue; }
+      month = parsed.toISOString().split('T')[0];
+    }
+
+    rows.push({
+      customerName,
+      brand: String(m.brand || '').trim(),
+      type: String(m.type || '').trim(),
+      formation: String(m.formation || '').trim(),
+      productName: String(m.productName || '').trim(),
+      productNumber,
+      month,
+      posCases: m.posCases != null && m.posCases !== '' ? Number(m.posCases) : null,
+      invoiceCases: m.invoiceCases != null && m.invoiceCases !== '' ? Number(m.invoiceCases) : null,
+      orderCases: m.orderCases != null && m.orderCases !== '' ? Number(m.orderCases) : null,
+      forecast: m.forecast != null && m.forecast !== '' ? Number(m.forecast) : null,
+    });
+  }
+  return { success: true, rows, errors, rowCount: rows.length };
+}
+
+// ============================================================
+// FORECASTING ENGINE
+// ============================================================
+function getWeights(window, profile) {
+  if (profile === 'linear_decay') {
+    const raw = Array.from({length: window}, (_, i) => window - i);
+    const sum = raw.reduce((a,b) => a+b, 0);
+    return raw.map(w => w / sum);
+  }
+  return Array(window).fill(1 / window);
+}
+
+function calcSeasonalIndices(data) {
+  const totals = new Array(12).fill(0), counts = new Array(12).fill(0);
+  for (const p of data) {
+    const mi = new Date(p.month).getMonth();
+    totals[mi] += p.value; counts[mi]++;
+  }
+  const avg = data.reduce((s,p) => s + p.value, 0) / data.length;
+  return Array.from({length:12}, (_, i) => counts[i] > 0 && avg > 0 ? (totals[i]/counts[i])/avg : 1);
+}
+
+function weightedMovingAverage(actuals, params, horizon) {
+  if (!actuals.length) return [];
+  const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const win = Math.min(params.window, sorted.length);
+  const weights = getWeights(win, params.weightProfile || 'equal');
+  let seasonal = null;
+  if (params.seasonality && sorted.length >= 12) seasonal = calcSeasonalIndices(sorted);
+
+  const results = [], values = sorted.map(p => p.value);
+  let recent = values.slice(-win);
+  const last = new Date(sorted[sorted.length-1].month);
+
+  for (let i = 1; i <= horizon; i++) {
+    let fc = 0;
+    for (let j = 0; j < win; j++) fc += recent[recent.length - win + j] * weights[j];
+    if (seasonal) {
+      const td = new Date(last); td.setMonth(td.getMonth() + i);
+      fc *= seasonal[td.getMonth()];
+    }
+    fc = Math.round(fc * 100) / 100;
+    const fd = new Date(last); fd.setMonth(fd.getMonth() + i + 1, 0);
+    results.push({ month: fd.toISOString().split('T')[0], statValue: fc });
+    recent.push(fc);
+  }
+  return results;
+}
+
+function exponentialSmoothing(actuals, params, horizon) {
+  if (!actuals.length) return [];
+  const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const alpha = params.alpha || 0.3;
+  let smoothed = sorted[0].value;
+  for (let i = 1; i < sorted.length; i++) smoothed = alpha * sorted[i].value + (1-alpha) * smoothed;
+
+  const results = [], last = new Date(sorted[sorted.length-1].month);
+  for (let i = 1; i <= horizon; i++) {
+    const fd = new Date(last); fd.setMonth(fd.getMonth() + i + 1, 0);
+    results.push({ month: fd.toISOString().split('T')[0], statValue: Math.round(smoothed*100)/100 });
+  }
+  return results;
+}
+
+function posToShipmentLag(posData, shipData, lag, window, horizon) {
+  if (!posData.length || !shipData.length) return [];
+  const sp = [...posData].sort((a,b)=>a.month.localeCompare(b.month));
+  const ss = [...shipData].sort((a,b)=>a.month.localeCompare(b.month));
+  const shipMap = new Map(ss.map(p=>[p.month, p.value]));
+
+  let ratioSum = 0, ratioCount = 0;
+  const recent = sp.slice(-window - lag);
+  for (let i = lag; i < recent.length; i++) {
+    const pv = recent[i-lag].value;
+    const sd = new Date(recent[i-lag].month); sd.setMonth(sd.getMonth()+lag+1,0);
+    const sv = shipMap.get(sd.toISOString().split('T')[0]);
+    if (pv > 0 && sv !== undefined) { ratioSum += sv/pv; ratioCount++; }
+  }
+  const ratio = ratioCount > 0 ? ratioSum/ratioCount : 1;
+
+  const results = [], last = new Date(sp[sp.length-1].month);
+  for (let i = 1; i <= horizon; i++) {
+    const fd = new Date(last); fd.setMonth(fd.getMonth()+i+1,0);
+    const psd = new Date(fd); psd.setMonth(psd.getMonth()-lag+1,0);
+    const pp = sp.find(p=>p.month===psd.toISOString().split('T')[0]);
+    const pv = pp ? pp.value : sp[sp.length-1].value;
+    results.push({ month: fd.toISOString().split('T')[0], statValue: Math.round(pv*ratio*100)/100 });
+  }
+  return results;
+}
+
+function consumptionRate(posData, shipData, window, horizon) {
+  if (!posData.length || !shipData.length) return [];
+  const sp = [...posData].sort((a,b)=>a.month.localeCompare(b.month));
+  const ss = [...shipData].sort((a,b)=>a.month.localeCompare(b.month));
+  const posMap = new Map(sp.map(p=>[p.month,p.value]));
+  const shipMap = new Map(ss.map(p=>[p.month,p.value]));
+
+  const common = [...posMap.keys()].filter(m=>shipMap.has(m)).sort().slice(-window);
+  let rateSum = 0, rc = 0;
+  for (const m of common) { const s = shipMap.get(m); if (s>0) { rateSum += posMap.get(m)/s; rc++; } }
+  const rate = rc > 0 ? rateSum/rc : 1;
+  const baseShip = ss.slice(-window).reduce((s,p)=>s+p.value,0) / Math.min(window, ss.length);
+
+  const results = [], last = new Date(ss[ss.length-1].month);
+  for (let i = 1; i <= horizon; i++) {
+    const fd = new Date(last); fd.setMonth(fd.getMonth()+i+1,0);
+    results.push({ month: fd.toISOString().split('T')[0], statValue: Math.round(baseShip*rate*100)/100 });
+  }
+  return results;
+}
+
+function extractSeries(rows, source) {
+  return rows.map(r => {
+    let v;
+    if (source === 'pos') v = r.posCases;
+    else if (source === 'invoice') v = r.invoiceCases;
+    else if (source === 'order') v = r.orderCases;
+    else if (source === 'blended') v = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
+    return { month: r.month, value: v || 0 };
+  }).filter(p => p.value > 0).sort((a,b) => a.month.localeCompare(b.month));
+}
+
+function runForecastEngine(actuals, params, horizon) {
+  const series = extractSeries(actuals, params.source);
+  switch (params.method) {
+    case 'weighted_ma': return weightedMovingAverage(series, params, horizon);
+    case 'exp_smoothing': return exponentialSmoothing(series, params, horizon);
+    case 'pos_lag': {
+      const pos = extractSeries(actuals, 'pos');
+      const ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
+      return posToShipmentLag(pos, ship, 2, params.window, horizon);
+    }
+    case 'consumption_rate': {
+      const pos = extractSeries(actuals, 'pos');
+      const ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
+      return consumptionRate(pos, ship, params.window, horizon);
+    }
+    default: return weightedMovingAverage(series, params, horizon);
+  }
+}
+
+// ============================================================
+// VIEW MANAGEMENT
+// ============================================================
+function showUpload() {
+  document.getElementById('upload-view').classList.remove('hidden');
+  document.getElementById('dashboard-view').classList.add('hidden');
+}
+function showDashboard() {
+  document.getElementById('upload-view').classList.add('hidden');
+  document.getElementById('dashboard-view').classList.remove('hidden');
+  document.getElementById('file-info').textContent = state.fileName || '';
+  populateFilters();
+  renderDashboard();
+}
+
+// ============================================================
+// DATA LOADING
+// ============================================================
+function loadData(rows, fileName) {
+  state.parsedRows = rows;
+  state.fileName = fileName;
+  state.forecastResults = {};
+  state.overrides = {};
+  state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
+
+  // Derive unique customers and products
+  const custSet = new Map(), prodSet = new Map();
+  for (const r of rows) {
+    if (!custSet.has(r.customerName)) custSet.set(r.customerName, { name: r.customerName });
+    if (!prodSet.has(r.productNumber)) prodSet.set(r.productNumber, {
+      productNumber: r.productNumber, productName: r.productName || r.productNumber,
+      brand: r.brand, type: r.type, formation: r.formation
+    });
+  }
+  state.customers = [...custSet.values()].sort((a,b) => a.name.localeCompare(b.name));
+  state.products = [...prodSet.values()].sort((a,b) => a.productName.localeCompare(b.productName));
+
+  // Check POS data availability
+  state.hasPosData = rows.some(r => r.posCases != null && r.posCases > 0);
+}
+
+// ============================================================
+// FILTERS
+// ============================================================
+function populateFilters() {
+  const fc = document.getElementById('filter-customer');
+  const fb = document.getElementById('filter-brand');
+  const ft = document.getElementById('filter-type');
+  const ff = document.getElementById('filter-formation');
+  const fp = document.getElementById('filter-product');
+
+  fc.innerHTML = '<option value="">All Customers</option>' +
+    state.customers.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+
+  const brands = [...new Set(state.products.map(p=>p.brand).filter(Boolean))].sort();
+  fb.innerHTML = '<option value="">All Brands</option>' + brands.map(b => `<option value="${b}">${b}</option>`).join('');
+
+  const types = [...new Set(state.products.map(p=>p.type).filter(Boolean))].sort();
+  ft.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
+
+  const formations = [...new Set(state.products.map(p=>p.formation).filter(Boolean))].sort();
+  ff.innerHTML = '<option value="">All Formations</option>' + formations.map(f => `<option value="${f}">${f}</option>`).join('');
+
+  fp.innerHTML = '<option value="">All Products</option>' +
+    state.products.map(p => `<option value="${p.productNumber}">${p.productName}</option>`).join('');
+
+  // Disable POS-dependent methods if no POS data
+  const posLag = document.querySelector('#cfg-method option[value="pos_lag"]');
+  const conRate = document.querySelector('#cfg-method option[value="consumption_rate"]');
+  const posSrc = document.querySelector('#cfg-source option[value="pos"]');
+  if (posLag) posLag.disabled = !state.hasPosData;
+  if (conRate) conRate.disabled = !state.hasPosData;
+  if (posSrc) posSrc.disabled = !state.hasPosData;
+}
+
+function onFilterChange() {
+  state.filters.customer = document.getElementById('filter-customer').value;
+  state.filters.brand = document.getElementById('filter-brand').value;
+  state.filters.type = document.getElementById('filter-type').value;
+  state.filters.formation = document.getElementById('filter-formation').value;
+  state.filters.product = document.getElementById('filter-product').value;
+  renderDashboard();
+}
+
+function resetFilters() {
+  state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
+  document.getElementById('filter-customer').value = '';
+  document.getElementById('filter-brand').value = '';
+  document.getElementById('filter-type').value = '';
+  document.getElementById('filter-formation').value = '';
+  document.getElementById('filter-product').value = '';
+  renderDashboard();
+}
+
+function getFilteredRows() {
+  return state.parsedRows.filter(r => {
+    if (state.filters.customer && r.customerName !== state.filters.customer) return false;
+    if (state.filters.product && r.productNumber !== state.filters.product) return false;
+    if (state.filters.brand && r.brand !== state.filters.brand) return false;
+    if (state.filters.type && r.type !== state.filters.type) return false;
+    if (state.filters.formation && r.formation !== state.filters.formation) return false;
+    return true;
+  });
+}
+
+// ============================================================
+// CONFIG UI
+// ============================================================
+function onConfigChange() {
+  const method = document.getElementById('cfg-method').value;
+  document.getElementById('weight-section').classList.toggle('hidden', method !== 'weighted_ma');
+  document.getElementById('alpha-section').classList.toggle('hidden', method !== 'exp_smoothing');
+}
+
+function getConfigParams() {
+  return {
+    method: document.getElementById('cfg-method').value,
+    source: document.getElementById('cfg-source').value,
+    window: parseInt(document.getElementById('cfg-window').value),
+    weightProfile: document.getElementById('cfg-weights').value,
+    alpha: parseFloat(document.getElementById('cfg-alpha').value),
+    seasonality: document.getElementById('cfg-seasonality').checked,
+  };
+}
+
+// ============================================================
+// FORECAST
+// ============================================================
+function runForecast() {
+  const filtered = getFilteredRows();
+  // Only use rows with actual data
+  const actuals = [];
+  const monthAgg = new Map();
+  for (const r of filtered) {
+    if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+      const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
+      prev.posCases += r.posCases || 0;
+      prev.invoiceCases += r.invoiceCases || 0;
+      prev.orderCases += r.orderCases || 0;
+      monthAgg.set(r.month, prev);
+    }
+  }
+  const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
+  if (!actualData.length) return;
+
+  const params = getConfigParams();
+  const results = runForecastEngine(actualData, params, 18);
+  const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  state.forecastResults[key] = results;
+  renderDashboard();
+}
+
+// ============================================================
+// OVERRIDE
+// ============================================================
+function setOverride(month, value) {
+  const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all') + '|' + month;
+  if (value === null || value === '') {
+    delete state.overrides[key];
+  } else {
+    state.overrides[key] = Number(value);
+  }
+  renderDashboard();
+}
+
+// ============================================================
+// BUILD DASHBOARD ROWS
+// ============================================================
+function getDashboardRows() {
+  const filtered = getFilteredRows();
+  const actualMap = new Map();
+  const existingFcstMap = new Map();
+
+  for (const r of filtered) {
+    const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
+    if (hasActuals) {
+      const prev = actualMap.get(r.month) || { pos: 0, invoice: 0, order: 0 };
+      actualMap.set(r.month, {
+        pos: prev.pos + (r.posCases||0),
+        invoice: prev.invoice + (r.invoiceCases||0),
+        order: prev.order + (r.orderCases||0),
+      });
+    }
+    if (r.forecast != null) {
+      existingFcstMap.set(r.month, (existingFcstMap.get(r.month)||0) + r.forecast);
+    }
+  }
+
+  const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  const statResults = state.forecastResults[fcKey] || [];
+  const statMap = new Map(statResults.map(r => [r.month, r.statValue]));
+
+  const allMonths = new Set();
+  actualMap.forEach((_,m) => allMonths.add(m));
+  existingFcstMap.forEach((_,m) => allMonths.add(m));
+  statMap.forEach((_,m) => allMonths.add(m));
+
+  const overridePrefix = fcKey + '|';
+
+  return [...allMonths].sort().map(month => {
+    const actual = actualMap.get(month);
+    const existing = existingFcstMap.get(month);
+    const stat = statMap.get(month);
+    const ov = state.overrides[overridePrefix + month];
+    const isHistorical = !!actual;
+    return {
+      month,
+      posCases: actual ? actual.pos : null,
+      invoiceCases: actual ? actual.invoice : null,
+      orderCases: actual ? actual.order : null,
+      existingForecast: existing ?? null,
+      statForecast: stat ?? null,
+      overrideVal: ov ?? null,
+      finalValue: ov ?? stat ?? existing ?? null,
+      isHistorical,
+    };
+  });
+}
+
+// ============================================================
+// RENDER DASHBOARD
+// ============================================================
+function renderDashboard() {
+  const rows = getDashboardRows();
+  renderChart(rows);
+  renderGrid(rows);
+}
+
+function fmt(v) { return v != null ? Number(v).toLocaleString(undefined, {maximumFractionDigits:0}) : ''; }
+
+function fmtMonth(m) {
+  const d = new Date(m + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
+
+// ============================================================
+// CHART
+// ============================================================
+function renderChart(rows) {
+  const ctx = document.getElementById('forecast-chart');
+  if (chart) chart.destroy();
+
+  const labels = rows.map(r => fmtMonth(r.month));
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        { label: 'POS', data: rows.map(r=>r.posCases), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+        { label: 'Invoice', data: rows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+        { label: 'Orders', data: rows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
+        { label: 'Existing Fcst', data: rows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+        { label: 'Stat Forecast', data: rows.map(r=>r.statForecast), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+        { label: 'Override', data: rows.map(r=>r.overrideVal), borderColor: '#22c55e', borderWidth: 0, pointRadius: rows.map(r=>r.overrideVal!=null?5:0), pointBackgroundColor: '#22c55e', spanGaps: false, showLine: false },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { font: { size: 11 } } } },
+      scales: {
+        x: { ticks: { font: { size: 10 }, maxTicksLimit: 20 } },
+        y: { ticks: { font: { size: 10 } } },
+      },
+    },
+  });
+}
+
+// ============================================================
+// DATA GRID
+// ============================================================
+function renderGrid(rows) {
+  const tbody = document.getElementById('grid-body');
+  tbody.innerHTML = rows.map(r => {
+    const overrideCell = r.isHistorical
+      ? `<td class="num"></td>`
+      : `<td class="num"><input type="number" value="${r.overrideVal ?? ''}" onchange="setOverride('${r.month}', this.value === '' ? null : this.value)" ${r.overrideVal != null ? 'class="override-cell"' : ''}></td>`;
+    return `<tr>
+      <td>${r.month}</td>
+      <td class="num">${fmt(r.posCases)}</td>
+      <td class="num">${fmt(r.invoiceCases)}</td>
+      <td class="num">${fmt(r.orderCases)}</td>
+      <td class="num">${fmt(r.existingForecast)}</td>
+      <td class="num" style="color:#8b5cf6">${fmt(r.statForecast)}</td>
+      ${overrideCell}
+      <td class="num" style="font-weight:bold">${fmt(r.finalValue)}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ============================================================
+// EXCEL EXPORT
+// ============================================================
+function exportExcel() {
+  const rows = getDashboardRows();
+  const wb = XLSX.utils.book_new();
+
+  // History tab
+  const hist = rows.filter(r=>r.isHistorical).map(r=>({Month:r.month, 'POS Cases':r.posCases, 'Invoice Cases':r.invoiceCases, 'Order Cases':r.orderCases}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hist), 'History');
+
+  // Existing Forecast tab
+  const ef = rows.filter(r=>r.existingForecast!=null).map(r=>({Month:r.month, 'Existing Forecast':r.existingForecast}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ef), 'Existing Forecast');
+
+  // Statistical Forecast tab
+  const sf = rows.filter(r=>r.statForecast!=null).map(r=>({Month:r.month, 'Stat Forecast':r.statForecast}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sf), 'Statistical Forecast');
+
+  // Final Forecast tab
+  const ff = rows.filter(r=>!r.isHistorical).map(r=>({Month:r.month, Final:r.finalValue, Override:r.overrideVal, Source:r.overrideVal!=null?'Override':'Statistical'}));
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ff), 'Final Forecast');
+
+  // Config tab
+  const params = getConfigParams();
+  const cfg = [
+    {Parameter:'Customer', Value: state.filters.customer||'All'},
+    {Parameter:'Product', Value: state.filters.product||'All'},
+    {Parameter:'Method', Value: params.method},
+    {Parameter:'Source', Value: params.source},
+    {Parameter:'Window', Value: params.window},
+    {Parameter:'Weight Profile', Value: params.weightProfile},
+    {Parameter:'Alpha', Value: params.alpha},
+    {Parameter:'Seasonality', Value: params.seasonality?'Yes':'No'},
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cfg), 'Config');
+
+  XLSX.writeFile(wb, `forecast_${state.filters.customer||'all'}_${state.filters.product||'all'}.xlsx`);
+}
+
+// ============================================================
+// EVENT HANDLERS
+// ============================================================
+let selectedFile = null;
+
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const processBtn = document.getElementById('process-btn');
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-blue-500', 'bg-blue-50'); });
+dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('border-blue-500', 'bg-blue-50'); });
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+  const f = e.dataTransfer.files[0];
+  if (f && (f.name.endsWith('.xlsx') || f.name.endsWith('.csv'))) {
+    selectedFile = f;
+    document.getElementById('drop-text').textContent = f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+    processBtn.classList.remove('hidden');
+    document.getElementById('upload-error').classList.add('hidden');
+    document.getElementById('upload-result').classList.add('hidden');
+  } else {
+    showError('Please upload an .xlsx or .csv file');
+  }
+});
+
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) {
+    selectedFile = f;
+    document.getElementById('drop-text').textContent = f.name + ' (' + (f.size/1024).toFixed(1) + ' KB)';
+    processBtn.classList.remove('hidden');
+    document.getElementById('upload-error').classList.add('hidden');
+    document.getElementById('upload-result').classList.add('hidden');
+  }
+});
+
+processBtn.addEventListener('click', () => {
+  if (!selectedFile) return;
+  processBtn.textContent = 'Processing...';
+  processBtn.disabled = true;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const result = parseFile(e.target.result);
+    processBtn.textContent = 'Process File';
+    processBtn.disabled = false;
+
+    if (!result.success) {
+      showError(result.errors.join('; '));
+      return;
+    }
+
+    loadData(result.rows, selectedFile.name);
+
+    // Show results
+    processBtn.classList.add('hidden');
+    document.getElementById('result-rows').textContent = result.rowCount.toLocaleString();
+    document.getElementById('result-customers').textContent = state.customers.length;
+    document.getElementById('result-products').textContent = state.products.length;
+
+    if (result.errors.length > 0) {
+      const wDiv = document.getElementById('result-warnings');
+      wDiv.classList.remove('hidden');
+      wDiv.innerHTML = '<p class="font-medium">Warnings (' + result.errors.length + '):</p><ul class="list-disc list-inside mt-1">' +
+        result.errors.slice(0,5).map(e => '<li>'+e+'</li>').join('') +
+        (result.errors.length > 5 ? '<li>...and '+(result.errors.length-5)+' more</li>' : '') + '</ul>';
+    }
+
+    document.getElementById('upload-result').classList.remove('hidden');
+  };
+  reader.readAsArrayBuffer(selectedFile);
+});
+
+document.getElementById('go-dashboard-btn').addEventListener('click', showDashboard);
+
+function showError(msg) {
+  const el = document.getElementById('upload-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+</script>
+</body>
+</html>
