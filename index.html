@@ -4,77 +4,179 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sales Forecasting Engine</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
   <style>
-    [x-cloak] { display: none !important; }
-    .tab-active { border-bottom: 2px solid #2563eb; color: #2563eb; font-weight: 600; }
-    .override-cell { background-color: #dcfce7; color: #166534; font-weight: bold; }
-    table.data-grid { border-collapse: collapse; width: 100%; font-size: 13px; }
-    table.data-grid th { background: #f9fafb; position: sticky; top: 0; z-index: 1; text-align: left; padding: 8px 12px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 12px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; }
-    table.data-grid td { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; }
-    table.data-grid tr:hover { background: #f9fafb; }
-    table.data-grid input { width: 80px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; text-align: right; }
-    table.data-grid input:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; color: #111827; line-height: 1.5; }
+    .hidden { display: none !important; }
+    /* Layout */
+    .container { max-width: 1280px; margin: 0 auto; padding: 0 16px; }
+    .container-sm { max-width: 672px; margin: 0 auto; padding: 0 16px; }
+    .container-md { max-width: 896px; margin: 0 auto; padding: 0 16px; }
+    .min-h-screen { min-height: 100vh; }
+    .flex { display: flex; }
+    .flex-col { flex-direction: column; }
+    .flex-1 { flex: 1 1 0%; }
+    .flex-wrap { flex-wrap: wrap; }
+    .items-center { align-items: center; }
+    .items-end { align-items: flex-end; }
+    .justify-center { justify-content: center; }
+    .justify-between { justify-content: space-between; }
+    .text-center { text-align: center; }
+    .w-full { width: 100%; }
+    .grid { display: grid; }
+    .grid-cols-3 { grid-template-columns: repeat(3, 1fr); }
+    .grid-cols-4 { grid-template-columns: repeat(4, 1fr); }
+    .grid-cols-2-3 { grid-template-columns: repeat(2, 1fr); }
+    @media (min-width: 768px) { .grid-cols-2-3 { grid-template-columns: repeat(3, 1fr); } }
+    .grid-main { display: grid; grid-template-columns: 1fr; gap: 24px; }
+    @media (min-width: 1024px) { .grid-main { grid-template-columns: 3fr 1fr; } }
+    .gap-1 { gap: 4px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; } .gap-6 { gap: 24px; }
+    /* Spacing */
+    .p-4 { padding: 16px; } .p-6 { padding: 24px; } .p-12 { padding: 48px; }
+    .px-2 { padding-left: 8px; padding-right: 8px; } .px-3 { padding-left: 12px; padding-right: 12px; } .px-4 { padding-left: 16px; padding-right: 16px; } .px-6 { padding-left: 24px; padding-right: 24px; }
+    .py-1 { padding-top: 4px; padding-bottom: 4px; } .py-1h { padding-top: 6px; padding-bottom: 6px; } .py-2 { padding-top: 8px; padding-bottom: 8px; } .py-3 { padding-top: 12px; padding-bottom: 12px; } .py-6 { padding-top: 24px; padding-bottom: 24px; }
+    .mb-1 { margin-bottom: 4px; } .mb-2 { margin-bottom: 8px; } .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; } .mb-6 { margin-bottom: 24px; } .mb-8 { margin-bottom: 32px; }
+    .mt-2 { margin-top: 8px; } .mt-4 { margin-top: 16px; } .mt-6 { margin-top: 24px; } .ml-2 { margin-left: 8px; }
+    /* Typography */
+    .text-xs { font-size: 12px; line-height: 16px; } .text-sm { font-size: 14px; line-height: 20px; } .text-base { font-size: 16px; } .text-lg { font-size: 18px; line-height: 28px; } .text-xl { font-size: 20px; } .text-2xl { font-size: 24px; line-height: 32px; } .text-3xl { font-size: 30px; line-height: 36px; }
+    .font-medium { font-weight: 500; } .font-semibold { font-weight: 600; } .font-bold { font-weight: 700; }
+    .font-mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace; }
+    .uppercase { text-transform: uppercase; } .tracking-wide { letter-spacing: 0.05em; }
+    .underline { text-decoration: underline; }
+    /* Colors */
+    .bg-white { background: #fff; } .bg-gray-50 { background: #f9fafb; } .bg-blue-50 { background: #eff6ff; } .bg-blue-600 { background: #2563eb; } .bg-red-50 { background: #fef2f2; } .bg-green-50 { background: #f0fdf4; } .bg-green-700 { background: #15803d; } .bg-gray-100 { background: #f3f4f6; }
+    .text-white { color: #fff; } .text-gray-400 { color: #9ca3af; } .text-gray-500 { color: #6b7280; } .text-gray-600 { color: #4b5563; } .text-gray-700 { color: #374151; } .text-gray-900 { color: #111827; }
+    .text-blue-600 { color: #2563eb; } .text-red-700 { color: #b91c1c; } .text-green-600 { color: #16a34a; } .text-green-800 { color: #166534; } .text-yellow-700 { color: #a16207; }
+    /* Borders & Radius */
+    .border { border: 1px solid #e5e7eb; } .border-b { border-bottom: 1px solid #e5e7eb; } .border-2 { border-width: 2px; } .border-dashed { border-style: dashed; }
+    .border-gray-300 { border-color: #d1d5db; } .border-red-200 { border-color: #fecaca; } .border-green-200 { border-color: #bbf7d0; } .border-blue-500 { border-color: #3b82f6; }
+    .rounded { border-radius: 4px; } .rounded-md { border-radius: 6px; } .rounded-lg { border-radius: 8px; }
+    /* Interactive */
+    .cursor-pointer { cursor: pointer; }
+    .transition { transition: all 150ms ease; }
+    button { cursor: pointer; border: none; font-family: inherit; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: #2563eb; color: #fff; border-radius: 8px; font-weight: 500; }
+    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
+    .btn-outline { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 8px; font-weight: 500; font-size: 14px; }
+    .btn-outline:hover { background: #f9fafb; }
+    .btn-green { background: #15803d; color: #fff; border-radius: 8px; font-weight: 500; }
+    .btn-green:hover { background: #166534; }
+    select, input[type="range"] { font-family: inherit; }
+    select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 5l3 3 3-3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+    .select-field { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 28px 8px 12px; font-size: 14px; background-color: #fff; }
+    .select-sm { padding: 6px 28px 6px 12px; }
+    .filter-group { flex: 1 1 0%; min-width: 140px; }
+    .filter-group-lg { flex: 1 1 0%; min-width: 200px; }
+    .label { display: block; font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 4px; }
+    /* Cards */
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+    /* Nav */
+    .nav { border-bottom: 1px solid #e5e7eb; background: #fff; }
+    .nav-inner { max-width: 1280px; margin: 0 auto; padding: 0 16px; height: 56px; display: flex; align-items: center; }
+    /* Loading overlay */
+    .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { margin-left: 16px; font-size: 14px; color: #6b7280; }
+    /* Toast */
+    .toast { position: fixed; top: 16px; right: 16px; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); z-index: 200; font-size: 14px; max-width: 400px; transform: translateX(120%); transition: transform 0.3s ease; }
+    .toast.show { transform: translateX(0); }
+    .toast-error { border-left: 4px solid #ef4444; }
+    .toast-success { border-left: 4px solid #22c55e; }
+    /* Drop zone */
+    .drop-zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 48px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+    .drop-zone:hover { border-color: #9ca3af; }
+    .drop-zone.active { border-color: #3b82f6; background: #eff6ff; }
+    /* Data grid */
     .grid-container { max-height: 450px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+    table.data-grid { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.data-grid th { background: #f9fafb; position: sticky; top: 0; z-index: 1; text-align: left; padding: 8px 12px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+    table.data-grid td { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
+    table.data-grid tr:hover td { background: #f9fafb; }
+    table.data-grid input[type="number"] { width: 80px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; text-align: right; font-family: inherit; }
+    table.data-grid input[type="number"]:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
+    .override-cell input { background: #dcfce7 !important; color: #166534; font-weight: 600; }
+    .stat-color { color: #8b5cf6; }
+    .final-bold { font-weight: 700; }
+    /* Config sidebar */
+    .config-space > * + * { margin-top: 16px; }
+    .checkbox-row { display: flex; align-items: center; gap: 8px; }
+    .checkbox-row input[type="checkbox"] { width: 16px; height: 16px; }
+    .range-labels { display: flex; justify-content: space-between; font-size: 12px; color: #9ca3af; }
+    /* Column tags */
+    .col-tag { font-family: ui-monospace, SFMono-Regular, monospace; background: #fff; padding: 4px 8px; border-radius: 4px; border: 1px solid #e5e7eb; font-size: 12px; color: #4b5563; }
+    /* Result cards */
+    .result-stat { text-align: left; }
+    .result-stat .label { color: #16a34a; font-size: 14px; }
+    .result-stat .value { font-size: 24px; font-weight: 700; color: #166534; }
+    .list-disc { list-style-type: disc; padding-left: 20px; }
   </style>
 </head>
-<body class="bg-gray-50 text-gray-900">
+<body>
+  <!-- Loading overlay -->
+  <div id="loading" class="loading-overlay hidden">
+    <div class="spinner"></div>
+    <span class="loading-text" id="loading-text">Processing...</span>
+  </div>
+
+  <!-- Toast notification -->
+  <div id="toast" class="toast"></div>
 
   <!-- ===== UPLOAD VIEW ===== -->
   <div id="upload-view" class="min-h-screen flex flex-col">
-    <nav class="border-b bg-white">
-      <div class="max-w-5xl mx-auto px-4 h-14 flex items-center">
-        <span class="text-lg font-semibold">Sales Forecast</span>
-      </div>
-    </nav>
+    <nav class="nav"><div class="nav-inner"><span class="text-lg font-semibold">Sales Forecast</span></div></nav>
     <div class="flex-1 flex items-center justify-center">
-      <div class="max-w-2xl w-full px-4">
+      <div class="container-md" style="padding-top:40px; padding-bottom:40px;">
         <h1 class="text-3xl font-bold text-center mb-2">Sales Forecasting Engine</h1>
         <p class="text-gray-500 text-center mb-8">Upload your Excel file to get started. Everything runs in your browser.</p>
 
-        <div class="mb-6 bg-gray-50 border rounded-lg p-4">
+        <div class="card p-4 mb-6" style="background:#f9fafb">
           <h3 class="text-sm font-semibold text-gray-700 mb-2">Expected Columns</h3>
-          <div class="grid grid-cols-2 md:grid-cols-3 gap-1 text-xs text-gray-600">
-            <span class="font-mono bg-white px-2 py-1 rounded border">CUSTOMER_NAME *</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">PRODUCTNUMBER *</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">END_OF_MONTH_EPOCH *</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">BRAND</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">TYPE</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">FORMATION</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">PRODUCTNAME</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">POS CASES</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">INVOICE CASES</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">ORDER CASES</span>
-            <span class="font-mono bg-white px-2 py-1 rounded border">FORECAST</span>
+          <div class="grid grid-cols-2-3 gap-1">
+            <span class="col-tag">CUSTOMER_NAME *</span>
+            <span class="col-tag">PRODUCTNUMBER *</span>
+            <span class="col-tag">END_OF_MONTH_EPOCH *</span>
+            <span class="col-tag">BRAND</span>
+            <span class="col-tag">TYPE</span>
+            <span class="col-tag">FORMATION</span>
+            <span class="col-tag">PRODUCTNAME</span>
+            <span class="col-tag">POS CASES</span>
+            <span class="col-tag">INVOICE CASES</span>
+            <span class="col-tag">ORDER CASES</span>
+            <span class="col-tag">FORECAST</span>
           </div>
           <p class="text-xs text-gray-400 mt-2">* Required columns</p>
         </div>
 
-        <div id="drop-zone" class="border-2 border-dashed border-gray-300 rounded-lg p-12 text-center cursor-pointer hover:border-gray-400 transition-colors">
-          <p class="text-gray-600" id="drop-text">Drag and drop your .xlsx or .csv file here, or click to browse</p>
+        <div id="drop-zone" class="drop-zone">
+          <p id="drop-text" class="text-gray-600">Drag and drop your .xlsx or .csv file here, or click to browse</p>
           <input type="file" id="file-input" accept=".xlsx,.csv" class="hidden">
         </div>
 
-        <div id="upload-error" class="mt-4 bg-red-50 border border-red-200 rounded-lg p-4 text-red-700 text-sm hidden"></div>
+        <div id="upload-error" class="mt-4 card p-4 hidden" style="background:#fef2f2; border-color:#fecaca;">
+          <p class="text-red-700 text-sm" id="upload-error-text"></p>
+        </div>
 
-        <button id="process-btn" class="mt-6 w-full py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium hidden">
-          Process File
-        </button>
+        <button id="process-btn" class="mt-6 w-full py-3 btn-primary text-base hidden">Process File</button>
 
-        <div id="upload-result" class="mt-6 bg-green-50 border border-green-200 rounded-lg p-6 hidden">
+        <div class="mt-4 text-center">
+          <span class="text-xs text-gray-400">or</span>
+          <button onclick="loadDemoData()" style="background:none; font-size:14px;" class="ml-2 text-blue-600 underline">Load Demo Data</button>
+        </div>
+
+        <div id="upload-result" class="mt-6 card p-6 hidden" style="background:#f0fdf4; border-color:#bbf7d0;">
           <h3 class="font-semibold text-green-800 mb-3">File Processed Successfully</h3>
-          <div class="grid grid-cols-3 gap-4 text-sm">
-            <div><p class="text-green-600">Rows</p><p class="text-2xl font-bold text-green-800" id="result-rows">0</p></div>
-            <div><p class="text-green-600">Customers</p><p class="text-2xl font-bold text-green-800" id="result-customers">0</p></div>
-            <div><p class="text-green-600">Products</p><p class="text-2xl font-bold text-green-800" id="result-products">0</p></div>
+          <div class="grid grid-cols-3 gap-4">
+            <div class="result-stat"><p class="label">Rows</p><p class="value" id="result-rows">0</p></div>
+            <div class="result-stat"><p class="label">Customers</p><p class="value" id="result-customers">0</p></div>
+            <div class="result-stat"><p class="label">Products</p><p class="value" id="result-products">0</p></div>
           </div>
           <div id="result-warnings" class="mt-4 text-sm text-yellow-700 hidden"></div>
-          <button id="go-dashboard-btn" class="mt-4 px-6 py-2 bg-green-700 text-white rounded-lg hover:bg-green-800 font-medium">
-            Go to Dashboard
-          </button>
+          <button id="go-dashboard-btn" class="mt-4 px-6 py-2 btn-green">Go to Dashboard</button>
         </div>
       </div>
     </div>
@@ -82,69 +184,56 @@
 
   <!-- ===== DASHBOARD VIEW ===== -->
   <div id="dashboard-view" class="min-h-screen hidden">
-    <nav class="border-b bg-white">
-      <div class="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
+    <nav class="nav">
+      <div class="nav-inner justify-between" style="max-width:1280px; margin:0 auto; padding:0 16px;">
         <div class="flex items-center gap-6">
           <span class="text-lg font-semibold">Sales Forecast</span>
           <span class="text-sm text-gray-500" id="file-info"></span>
         </div>
         <div class="flex gap-3">
-          <button onclick="showUpload()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">New Upload</button>
-          <button onclick="exportExcel()" class="px-4 py-2 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-sm font-medium">Export Excel</button>
+          <button onclick="showUpload()" class="px-4 py-2 btn-outline">New Upload</button>
+          <button onclick="exportExcel()" class="px-4 py-2 btn-outline">Export Excel</button>
         </div>
       </div>
     </nav>
 
-    <div class="max-w-7xl mx-auto px-4 py-6">
+    <div class="container py-6">
       <!-- Filters -->
-      <div class="bg-white border rounded-lg p-4 flex flex-wrap gap-4 items-end">
-        <div class="flex-1 min-w-[160px]">
-          <label class="block text-xs font-medium text-gray-500 mb-1">Customer</label>
-          <select id="filter-customer" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
-            <option value="">All Customers</option>
-          </select>
+      <div class="card p-4 flex flex-wrap gap-4 items-end">
+        <div class="filter-group" style="min-width:160px">
+          <label class="label">Customer</label>
+          <select id="filter-customer" onchange="onFilterChange()" class="select-field"><option value="">All Customers</option></select>
         </div>
-        <div class="flex-1 min-w-[140px]">
-          <label class="block text-xs font-medium text-gray-500 mb-1">Brand</label>
-          <select id="filter-brand" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
-            <option value="">All Brands</option>
-          </select>
+        <div class="filter-group">
+          <label class="label">Brand</label>
+          <select id="filter-brand" onchange="onFilterChange()" class="select-field"><option value="">All Brands</option></select>
         </div>
-        <div class="flex-1 min-w-[140px]">
-          <label class="block text-xs font-medium text-gray-500 mb-1">Type</label>
-          <select id="filter-type" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
-            <option value="">All Types</option>
-          </select>
+        <div class="filter-group">
+          <label class="label">Type</label>
+          <select id="filter-type" onchange="onFilterChange()" class="select-field"><option value="">All Types</option></select>
         </div>
-        <div class="flex-1 min-w-[140px]">
-          <label class="block text-xs font-medium text-gray-500 mb-1">Formation</label>
-          <select id="filter-formation" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
-            <option value="">All Formations</option>
-          </select>
+        <div class="filter-group">
+          <label class="label">Formation</label>
+          <select id="filter-formation" onchange="onFilterChange()" class="select-field"><option value="">All Formations</option></select>
         </div>
-        <div class="flex-1 min-w-[200px]">
-          <label class="block text-xs font-medium text-gray-500 mb-1">Product</label>
-          <select id="filter-product" onchange="onFilterChange()" class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm bg-white">
-            <option value="">All Products</option>
-          </select>
+        <div class="filter-group-lg">
+          <label class="label">Product</label>
+          <select id="filter-product" onchange="onFilterChange()" class="select-field"><option value="">All Products</option></select>
         </div>
-        <button onclick="resetFilters()" class="px-3 py-2 text-sm text-gray-500 hover:text-gray-700">Reset</button>
+        <button onclick="resetFilters()" style="background:none; padding:8px 12px; font-size:14px; color:#6b7280;">Reset</button>
       </div>
 
-      <div class="mt-6 grid grid-cols-1 lg:grid-cols-4 gap-6">
-        <!-- Main content -->
-        <div class="lg:col-span-3">
+      <div class="grid-main mt-6">
+        <div>
           <!-- Chart -->
-          <div class="bg-white border rounded-lg p-6">
+          <div class="card p-6">
             <h2 class="text-sm font-semibold text-gray-700 mb-4">Sales & Forecast Trend</h2>
-            <div style="height:350px; position:relative;">
-              <canvas id="forecast-chart"></canvas>
-            </div>
+            <div style="height:350px; position:relative;"><canvas id="forecast-chart"></canvas></div>
           </div>
           <!-- Data grid -->
-          <div class="mt-6 bg-white border rounded-lg overflow-hidden">
-            <div class="grid-container" id="grid-container">
-              <table class="data-grid" id="data-grid">
+          <div class="card mt-6" style="overflow:hidden">
+            <div class="grid-container">
+              <table class="data-grid">
                 <thead><tr>
                   <th>Month</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Override</th><th class="num">Final</th>
                 </tr></thead>
@@ -155,58 +244,49 @@
         </div>
 
         <!-- Config sidebar -->
-        <div class="lg:col-span-1">
-          <div class="bg-white border rounded-lg p-4 space-y-4">
+        <div>
+          <div class="card p-4 config-space">
             <h2 class="text-sm font-semibold text-gray-700">Forecast Configuration</h2>
-
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Method</label>
-              <select id="cfg-method" onchange="onConfigChange()" class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white">
+              <label class="label">Method</label>
+              <select id="cfg-method" onchange="onConfigChange()" class="select-field select-sm">
                 <option value="weighted_ma">Weighted Moving Average</option>
                 <option value="exp_smoothing">Exponential Smoothing</option>
                 <option value="pos_lag">POS-to-Shipment Lag</option>
                 <option value="consumption_rate">POS Consumption Rate</option>
               </select>
             </div>
-
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Data Source</label>
-              <select id="cfg-source" class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white">
+              <label class="label">Data Source</label>
+              <select id="cfg-source" class="select-field select-sm">
                 <option value="pos">POS Cases</option>
                 <option value="invoice" selected>Invoice Cases</option>
                 <option value="order">Order Cases</option>
                 <option value="blended">Blended</option>
               </select>
             </div>
-
             <div>
-              <label class="block text-xs font-medium text-gray-500 mb-1">Lookback Window: <span id="window-val">6</span> months</label>
+              <label class="label">Lookback Window: <span id="window-val">6</span> months</label>
               <input type="range" id="cfg-window" min="3" max="24" value="6" oninput="document.getElementById('window-val').textContent=this.value" class="w-full">
-              <div class="flex justify-between text-xs text-gray-400"><span>3</span><span>24</span></div>
+              <div class="range-labels"><span>3</span><span>24</span></div>
             </div>
-
             <div id="weight-section">
-              <label class="block text-xs font-medium text-gray-500 mb-1">Weight Profile</label>
-              <select id="cfg-weights" class="w-full border border-gray-300 rounded-md px-3 py-1.5 text-sm bg-white">
+              <label class="label">Weight Profile</label>
+              <select id="cfg-weights" class="select-field select-sm">
                 <option value="equal">Equal</option>
                 <option value="linear_decay" selected>Linear Decay (recent = higher)</option>
               </select>
             </div>
-
             <div id="alpha-section" class="hidden">
-              <label class="block text-xs font-medium text-gray-500 mb-1">Alpha: <span id="alpha-val">0.3</span></label>
+              <label class="label">Alpha: <span id="alpha-val">0.3</span></label>
               <input type="range" id="cfg-alpha" min="0.1" max="0.9" step="0.1" value="0.3" oninput="document.getElementById('alpha-val').textContent=parseFloat(this.value).toFixed(1)" class="w-full">
-              <div class="flex justify-between text-xs text-gray-400"><span>0.1 (smooth)</span><span>0.9 (reactive)</span></div>
+              <div class="range-labels"><span>0.1 (smooth)</span><span>0.9 (reactive)</span></div>
             </div>
-
-            <div class="flex items-center gap-2">
-              <input type="checkbox" id="cfg-seasonality" class="rounded border-gray-300">
+            <div class="checkbox-row">
+              <input type="checkbox" id="cfg-seasonality">
               <label for="cfg-seasonality" class="text-xs text-gray-600">Apply seasonal indices</label>
             </div>
-
-            <button onclick="runForecast()" class="w-full py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 text-sm font-medium">
-              Recalculate
-            </button>
+            <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
           </div>
         </div>
       </div>
@@ -218,115 +298,111 @@
 // STATE
 // ============================================================
 const state = {
-  parsedRows: [],       // raw parsed rows from upload
+  parsedRows: [],
   fileName: null,
-  customers: [],        // unique {name}
-  products: [],         // unique {productNumber, productName, brand, type, formation}
+  customers: [],
+  products: [],
   filters: { customer: '', brand: '', type: '', formation: '', product: '' },
-  forecastResults: {},   // key "customer|product" => [{month, statValue}]
-  overrides: {},         // key "customer|product|month" => number
+  forecastResults: {},
+  overrides: {},
   hasPosData: false,
+  _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
 };
-
-let chart = null; // Chart.js instance
+let chart = null;
 
 // ============================================================
-// COLUMN MAPPING
+// UTILITIES
+// ============================================================
+function showLoading(msg) { document.getElementById('loading-text').textContent = msg || 'Processing...'; document.getElementById('loading').classList.remove('hidden'); }
+function hideLoading() { document.getElementById('loading').classList.add('hidden'); }
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type === 'error' ? 'toast-error' : 'toast-success');
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => { t.classList.remove('show'); }, 4000);
+}
+
+function sanitize(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
+
+// ============================================================
+// COLUMN MAPPING & PARSER
 // ============================================================
 const COLUMN_MAP = {
-  'CUSTOMER_NAME': 'customerName',
-  'BRAND': 'brand',
-  'TYPE': 'type',
-  'FORMATION': 'formation',
-  'PRODUCTNAME': 'productName',
-  'PRODUCTNUMBER': 'productNumber',
-  'END_OF_MONTH_EPOCH': 'endOfMonthEpoch',
-  'POS CASES': 'posCases',
-  'INVOICE CASES': 'invoiceCases',
-  'ORDER CASES': 'orderCases',
-  'FORECAST': 'forecast',
+  'CUSTOMER_NAME': 'customerName', 'BRAND': 'brand', 'TYPE': 'type',
+  'FORMATION': 'formation', 'PRODUCTNAME': 'productName', 'PRODUCTNUMBER': 'productNumber',
+  'END_OF_MONTH_EPOCH': 'endOfMonthEpoch', 'POS CASES': 'posCases',
+  'INVOICE CASES': 'invoiceCases', 'ORDER CASES': 'orderCases', 'FORECAST': 'forecast',
 };
 const REQUIRED = ['CUSTOMER_NAME', 'PRODUCTNUMBER', 'END_OF_MONTH_EPOCH'];
 
 function mapRow(raw, headers) {
   const mapped = {};
-  for (const h of headers) {
-    const key = COLUMN_MAP[h.trim().toUpperCase()];
-    if (key) mapped[key] = raw[h];
-  }
+  for (const h of headers) { const key = COLUMN_MAP[h.trim().toUpperCase()]; if (key) mapped[key] = raw[h]; }
   return mapped;
 }
 
-// ============================================================
-// EXCEL PARSER
-// ============================================================
 function parseFile(buffer) {
-  const wb = XLSX.read(buffer, { type: 'array' });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  if (!sheet) return { success: false, rows: [], errors: ['No sheets found'] };
+  try {
+    const wb = XLSX.read(buffer, { type: 'array' });
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    if (!sheet) return { success: false, rows: [], errors: ['No sheets found in file'], rowCount: 0 };
+    const rawData = XLSX.utils.sheet_to_json(sheet);
+    if (!rawData.length) return { success: false, rows: [], errors: ['Sheet is empty'], rowCount: 0 };
 
-  const rawData = XLSX.utils.sheet_to_json(sheet);
-  if (!rawData.length) return { success: false, rows: [], errors: ['Sheet is empty'] };
+    const headers = Object.keys(rawData[0]);
+    const upperHeaders = headers.map(h => h.trim().toUpperCase());
+    const missing = REQUIRED.filter(c => !upperHeaders.includes(c));
+    if (missing.length) return { success: false, rows: [], errors: ['Missing required columns: ' + missing.join(', ')], rowCount: 0 };
 
-  const headers = Object.keys(rawData[0]);
-  const upperHeaders = headers.map(h => h.trim().toUpperCase());
-  const missing = REQUIRED.filter(c => !upperHeaders.includes(c));
-  if (missing.length) return { success: false, rows: [], errors: ['Missing columns: ' + missing.join(', ')] };
+    const rows = [], errors = [];
+    for (let i = 0; i < rawData.length; i++) {
+      const m = mapRow(rawData[i], headers);
+      const customerName = String(m.customerName || '').trim();
+      const productNumber = String(m.productNumber || '').trim();
+      if (!customerName) { errors.push('Row ' + (i+2) + ': Missing CUSTOMER_NAME'); continue; }
+      if (!productNumber) { errors.push('Row ' + (i+2) + ': Missing PRODUCTNUMBER'); continue; }
 
-  const rows = [], errors = [];
-  for (let i = 0; i < rawData.length; i++) {
-    const m = mapRow(rawData[i], headers);
-    const customerName = String(m.customerName || '').trim();
-    const productNumber = String(m.productNumber || '').trim();
-    if (!customerName) { errors.push('Row ' + (i+2) + ': Missing CUSTOMER_NAME'); continue; }
-    if (!productNumber) { errors.push('Row ' + (i+2) + ': Missing PRODUCTNUMBER'); continue; }
+      let month;
+      const rawDate = m.endOfMonthEpoch;
+      if (rawDate == null || rawDate === '') { errors.push('Row ' + (i+2) + ': Missing date'); continue; }
+      if (typeof rawDate === 'number') {
+        const d = XLSX.SSF.parse_date_code(rawDate);
+        month = d.y + '-' + String(d.m).padStart(2,'0') + '-' + String(d.d).padStart(2,'0');
+      } else {
+        const parsed = new Date(String(rawDate));
+        if (isNaN(parsed.getTime())) { errors.push('Row ' + (i+2) + ': Invalid date "' + rawDate + '"'); continue; }
+        month = parsed.toISOString().split('T')[0];
+      }
 
-    let month;
-    const raw = m.endOfMonthEpoch;
-    if (typeof raw === 'number') {
-      const d = XLSX.SSF.parse_date_code(raw);
-      month = d.y + '-' + String(d.m).padStart(2,'0') + '-' + String(d.d).padStart(2,'0');
-    } else {
-      const parsed = new Date(String(raw));
-      if (isNaN(parsed.getTime())) { errors.push('Row '+(i+2)+': Invalid date'); continue; }
-      month = parsed.toISOString().split('T')[0];
+      const toNum = (v) => (v != null && v !== '' && !isNaN(Number(v))) ? Number(v) : null;
+      rows.push({ customerName, brand: String(m.brand||'').trim(), type: String(m.type||'').trim(),
+        formation: String(m.formation||'').trim(), productName: String(m.productName||'').trim(),
+        productNumber, month, posCases: toNum(m.posCases), invoiceCases: toNum(m.invoiceCases),
+        orderCases: toNum(m.orderCases), forecast: toNum(m.forecast) });
     }
-
-    rows.push({
-      customerName,
-      brand: String(m.brand || '').trim(),
-      type: String(m.type || '').trim(),
-      formation: String(m.formation || '').trim(),
-      productName: String(m.productName || '').trim(),
-      productNumber,
-      month,
-      posCases: m.posCases != null && m.posCases !== '' ? Number(m.posCases) : null,
-      invoiceCases: m.invoiceCases != null && m.invoiceCases !== '' ? Number(m.invoiceCases) : null,
-      orderCases: m.orderCases != null && m.orderCases !== '' ? Number(m.orderCases) : null,
-      forecast: m.forecast != null && m.forecast !== '' ? Number(m.forecast) : null,
-    });
+    return { success: true, rows, errors, rowCount: rows.length };
+  } catch (e) {
+    return { success: false, rows: [], errors: ['Parse error: ' + (e.message || e)], rowCount: 0 };
   }
-  return { success: true, rows, errors, rowCount: rows.length };
 }
 
 // ============================================================
 // FORECASTING ENGINE
 // ============================================================
-function getWeights(window, profile) {
+function getWeights(win, profile) {
   if (profile === 'linear_decay') {
-    const raw = Array.from({length: window}, (_, i) => window - i);
+    const raw = Array.from({length: win}, (_, i) => win - i);
     const sum = raw.reduce((a,b) => a+b, 0);
     return raw.map(w => w / sum);
   }
-  return Array(window).fill(1 / window);
+  return Array(win).fill(1 / win);
 }
 
 function calcSeasonalIndices(data) {
   const totals = new Array(12).fill(0), counts = new Array(12).fill(0);
-  for (const p of data) {
-    const mi = new Date(p.month).getMonth();
-    totals[mi] += p.value; counts[mi]++;
-  }
+  for (const p of data) { const mi = new Date(p.month).getMonth(); totals[mi] += p.value; counts[mi]++; }
   const avg = data.reduce((s,p) => s + p.value, 0) / data.length;
   return Array.from({length:12}, (_, i) => counts[i] > 0 && avg > 0 ? (totals[i]/counts[i])/avg : 1);
 }
@@ -338,18 +414,13 @@ function weightedMovingAverage(actuals, params, horizon) {
   const weights = getWeights(win, params.weightProfile || 'equal');
   let seasonal = null;
   if (params.seasonality && sorted.length >= 12) seasonal = calcSeasonalIndices(sorted);
-
   const results = [], values = sorted.map(p => p.value);
   let recent = values.slice(-win);
   const last = new Date(sorted[sorted.length-1].month);
-
   for (let i = 1; i <= horizon; i++) {
     let fc = 0;
     for (let j = 0; j < win; j++) fc += recent[recent.length - win + j] * weights[j];
-    if (seasonal) {
-      const td = new Date(last); td.setMonth(td.getMonth() + i);
-      fc *= seasonal[td.getMonth()];
-    }
+    if (seasonal) { const td = new Date(last); td.setMonth(td.getMonth() + i); fc *= seasonal[td.getMonth()]; }
     fc = Math.round(fc * 100) / 100;
     const fd = new Date(last); fd.setMonth(fd.getMonth() + i + 1, 0);
     results.push({ month: fd.toISOString().split('T')[0], statValue: fc });
@@ -364,7 +435,6 @@ function exponentialSmoothing(actuals, params, horizon) {
   const alpha = params.alpha || 0.3;
   let smoothed = sorted[0].value;
   for (let i = 1; i < sorted.length; i++) smoothed = alpha * sorted[i].value + (1-alpha) * smoothed;
-
   const results = [], last = new Date(sorted[sorted.length-1].month);
   for (let i = 1; i <= horizon; i++) {
     const fd = new Date(last); fd.setMonth(fd.getMonth() + i + 1, 0);
@@ -373,14 +443,13 @@ function exponentialSmoothing(actuals, params, horizon) {
   return results;
 }
 
-function posToShipmentLag(posData, shipData, lag, window, horizon) {
+function posToShipmentLag(posData, shipData, lag, win, horizon) {
   if (!posData.length || !shipData.length) return [];
   const sp = [...posData].sort((a,b)=>a.month.localeCompare(b.month));
   const ss = [...shipData].sort((a,b)=>a.month.localeCompare(b.month));
   const shipMap = new Map(ss.map(p=>[p.month, p.value]));
-
   let ratioSum = 0, ratioCount = 0;
-  const recent = sp.slice(-window - lag);
+  const recent = sp.slice(-win - lag);
   for (let i = lag; i < recent.length; i++) {
     const pv = recent[i-lag].value;
     const sd = new Date(recent[i-lag].month); sd.setMonth(sd.getMonth()+lag+1,0);
@@ -388,7 +457,6 @@ function posToShipmentLag(posData, shipData, lag, window, horizon) {
     if (pv > 0 && sv !== undefined) { ratioSum += sv/pv; ratioCount++; }
   }
   const ratio = ratioCount > 0 ? ratioSum/ratioCount : 1;
-
   const results = [], last = new Date(sp[sp.length-1].month);
   for (let i = 1; i <= horizon; i++) {
     const fd = new Date(last); fd.setMonth(fd.getMonth()+i+1,0);
@@ -400,19 +468,17 @@ function posToShipmentLag(posData, shipData, lag, window, horizon) {
   return results;
 }
 
-function consumptionRate(posData, shipData, window, horizon) {
+function consumptionRate(posData, shipData, win, horizon) {
   if (!posData.length || !shipData.length) return [];
   const sp = [...posData].sort((a,b)=>a.month.localeCompare(b.month));
   const ss = [...shipData].sort((a,b)=>a.month.localeCompare(b.month));
   const posMap = new Map(sp.map(p=>[p.month,p.value]));
   const shipMap = new Map(ss.map(p=>[p.month,p.value]));
-
-  const common = [...posMap.keys()].filter(m=>shipMap.has(m)).sort().slice(-window);
+  const common = [...posMap.keys()].filter(m=>shipMap.has(m)).sort().slice(-win);
   let rateSum = 0, rc = 0;
   for (const m of common) { const s = shipMap.get(m); if (s>0) { rateSum += posMap.get(m)/s; rc++; } }
   const rate = rc > 0 ? rateSum/rc : 1;
-  const baseShip = ss.slice(-window).reduce((s,p)=>s+p.value,0) / Math.min(window, ss.length);
-
+  const baseShip = ss.slice(-win).reduce((s,p)=>s+p.value,0) / Math.min(win, ss.length);
   const results = [], last = new Date(ss[ss.length-1].month);
   for (let i = 1; i <= horizon; i++) {
     const fd = new Date(last); fd.setMonth(fd.getMonth()+i+1,0);
@@ -427,7 +493,7 @@ function extractSeries(rows, source) {
     if (source === 'pos') v = r.posCases;
     else if (source === 'invoice') v = r.invoiceCases;
     else if (source === 'order') v = r.orderCases;
-    else if (source === 'blended') v = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
+    else v = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
     return { month: r.month, value: v || 0 };
   }).filter(p => p.value > 0).sort((a,b) => a.month.localeCompare(b.month));
 }
@@ -463,6 +529,7 @@ function showDashboard() {
   document.getElementById('dashboard-view').classList.remove('hidden');
   document.getElementById('file-info').textContent = state.fileName || '';
   populateFilters();
+  invalidateCache();
   renderDashboard();
 }
 
@@ -475,8 +542,8 @@ function loadData(rows, fileName) {
   state.forecastResults = {};
   state.overrides = {};
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
+  state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
 
-  // Derive unique customers and products
   const custSet = new Map(), prodSet = new Map();
   for (const r of rows) {
     if (!custSet.has(r.customerName)) custSet.set(r.customerName, { name: r.customerName });
@@ -487,37 +554,58 @@ function loadData(rows, fileName) {
   }
   state.customers = [...custSet.values()].sort((a,b) => a.name.localeCompare(b.name));
   state.products = [...prodSet.values()].sort((a,b) => a.productName.localeCompare(b.productName));
-
-  // Check POS data availability
   state.hasPosData = rows.some(r => r.posCases != null && r.posCases > 0);
+}
+
+// ============================================================
+// CACHE
+// ============================================================
+function getFilterKey() {
+  const f = state.filters;
+  return f.customer + '|' + f.brand + '|' + f.type + '|' + f.formation + '|' + f.product;
+}
+
+function getDashKey() {
+  const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  return getFilterKey() + '||' + JSON.stringify(state.forecastResults[fcKey] || []) + '||' + JSON.stringify(state.overrides);
+}
+
+function invalidateCache() { state._cache.filterKey = ''; state._cache.dashKey = ''; }
+
+function getFilteredRows() {
+  const key = getFilterKey();
+  if (state._cache.filterKey === key) return state._cache.filtered;
+  const f = state.filters;
+  const result = state.parsedRows.filter(r => {
+    if (f.customer && r.customerName !== f.customer) return false;
+    if (f.product && r.productNumber !== f.product) return false;
+    if (f.brand && r.brand !== f.brand) return false;
+    if (f.type && r.type !== f.type) return false;
+    if (f.formation && r.formation !== f.formation) return false;
+    return true;
+  });
+  state._cache.filterKey = key;
+  state._cache.filtered = result;
+  return result;
 }
 
 // ============================================================
 // FILTERS
 // ============================================================
 function populateFilters() {
-  const fc = document.getElementById('filter-customer');
-  const fb = document.getElementById('filter-brand');
-  const ft = document.getElementById('filter-type');
-  const ff = document.getElementById('filter-formation');
-  const fp = document.getElementById('filter-product');
-
-  fc.innerHTML = '<option value="">All Customers</option>' +
-    state.customers.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
-
+  const setOpts = (id, items, labelFn, valFn, allLabel) => {
+    const el = document.getElementById(id);
+    el.innerHTML = '<option value="">' + allLabel + '</option>' + items.map(i => '<option value="' + sanitize(valFn(i)) + '">' + sanitize(labelFn(i)) + '</option>').join('');
+  };
+  setOpts('filter-customer', state.customers, c=>c.name, c=>c.name, 'All Customers');
   const brands = [...new Set(state.products.map(p=>p.brand).filter(Boolean))].sort();
-  fb.innerHTML = '<option value="">All Brands</option>' + brands.map(b => `<option value="${b}">${b}</option>`).join('');
-
+  setOpts('filter-brand', brands, b=>b, b=>b, 'All Brands');
   const types = [...new Set(state.products.map(p=>p.type).filter(Boolean))].sort();
-  ft.innerHTML = '<option value="">All Types</option>' + types.map(t => `<option value="${t}">${t}</option>`).join('');
-
+  setOpts('filter-type', types, t=>t, t=>t, 'All Types');
   const formations = [...new Set(state.products.map(p=>p.formation).filter(Boolean))].sort();
-  ff.innerHTML = '<option value="">All Formations</option>' + formations.map(f => `<option value="${f}">${f}</option>`).join('');
+  setOpts('filter-formation', formations, f=>f, f=>f, 'All Formations');
+  setOpts('filter-product', state.products, p=>p.productName, p=>p.productNumber, 'All Products');
 
-  fp.innerHTML = '<option value="">All Products</option>' +
-    state.products.map(p => `<option value="${p.productNumber}">${p.productName}</option>`).join('');
-
-  // Disable POS-dependent methods if no POS data
   const posLag = document.querySelector('#cfg-method option[value="pos_lag"]');
   const conRate = document.querySelector('#cfg-method option[value="consumption_rate"]');
   const posSrc = document.querySelector('#cfg-source option[value="pos"]');
@@ -532,32 +620,19 @@ function onFilterChange() {
   state.filters.type = document.getElementById('filter-type').value;
   state.filters.formation = document.getElementById('filter-formation').value;
   state.filters.product = document.getElementById('filter-product').value;
+  invalidateCache();
   renderDashboard();
 }
 
 function resetFilters() {
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
-  document.getElementById('filter-customer').value = '';
-  document.getElementById('filter-brand').value = '';
-  document.getElementById('filter-type').value = '';
-  document.getElementById('filter-formation').value = '';
-  document.getElementById('filter-product').value = '';
+  ['filter-customer','filter-brand','filter-type','filter-formation','filter-product'].forEach(id => document.getElementById(id).value = '');
+  invalidateCache();
   renderDashboard();
 }
 
-function getFilteredRows() {
-  return state.parsedRows.filter(r => {
-    if (state.filters.customer && r.customerName !== state.filters.customer) return false;
-    if (state.filters.product && r.productNumber !== state.filters.product) return false;
-    if (state.filters.brand && r.brand !== state.filters.brand) return false;
-    if (state.filters.type && r.type !== state.filters.type) return false;
-    if (state.filters.formation && r.formation !== state.filters.formation) return false;
-    return true;
-  });
-}
-
 // ============================================================
-// CONFIG UI
+// CONFIG
 // ============================================================
 function onConfigChange() {
   const method = document.getElementById('cfg-method').value;
@@ -580,27 +655,42 @@ function getConfigParams() {
 // FORECAST
 // ============================================================
 function runForecast() {
-  const filtered = getFilteredRows();
-  // Only use rows with actual data
-  const actuals = [];
-  const monthAgg = new Map();
-  for (const r of filtered) {
-    if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
-      const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
-      prev.posCases += r.posCases || 0;
-      prev.invoiceCases += r.invoiceCases || 0;
-      prev.orderCases += r.orderCases || 0;
-      monthAgg.set(r.month, prev);
-    }
-  }
-  const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
-  if (!actualData.length) return;
+  try {
+    showLoading('Calculating forecast...');
+    // Use requestAnimationFrame to let the loading overlay paint
+    requestAnimationFrame(() => {
+      try {
+        const filtered = getFilteredRows();
+        const monthAgg = new Map();
+        for (const r of filtered) {
+          if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+            const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
+            prev.posCases += r.posCases || 0;
+            prev.invoiceCases += r.invoiceCases || 0;
+            prev.orderCases += r.orderCases || 0;
+            monthAgg.set(r.month, prev);
+          }
+        }
+        const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
+        if (!actualData.length) { hideLoading(); showToast('No actual data found for current filters', 'error'); return; }
 
-  const params = getConfigParams();
-  const results = runForecastEngine(actualData, params, 18);
-  const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
-  state.forecastResults[key] = results;
-  renderDashboard();
+        const params = getConfigParams();
+        const results = runForecastEngine(actualData, params, 18);
+        const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+        state.forecastResults[key] = results;
+        invalidateCache();
+        renderDashboard();
+        hideLoading();
+        showToast('Forecast calculated: ' + results.length + ' months', 'success');
+      } catch (e) {
+        hideLoading();
+        showToast('Forecast error: ' + e.message, 'error');
+      }
+    });
+  } catch (e) {
+    hideLoading();
+    showToast('Error: ' + e.message, 'error');
+  }
 }
 
 // ============================================================
@@ -608,35 +698,28 @@ function runForecast() {
 // ============================================================
 function setOverride(month, value) {
   const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all') + '|' + month;
-  if (value === null || value === '') {
-    delete state.overrides[key];
-  } else {
-    state.overrides[key] = Number(value);
-  }
+  if (value === null || value === '') { delete state.overrides[key]; }
+  else { state.overrides[key] = Number(value); }
+  invalidateCache();
   renderDashboard();
 }
 
 // ============================================================
-// BUILD DASHBOARD ROWS
+// DASHBOARD ROWS
 // ============================================================
 function getDashboardRows() {
-  const filtered = getFilteredRows();
-  const actualMap = new Map();
-  const existingFcstMap = new Map();
+  const key = getDashKey();
+  if (state._cache.dashKey === key) return state._cache.dashRows;
 
+  const filtered = getFilteredRows();
+  const actualMap = new Map(), existingFcstMap = new Map();
   for (const r of filtered) {
     const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
     if (hasActuals) {
       const prev = actualMap.get(r.month) || { pos: 0, invoice: 0, order: 0 };
-      actualMap.set(r.month, {
-        pos: prev.pos + (r.posCases||0),
-        invoice: prev.invoice + (r.invoiceCases||0),
-        order: prev.order + (r.orderCases||0),
-      });
+      actualMap.set(r.month, { pos: prev.pos+(r.posCases||0), invoice: prev.invoice+(r.invoiceCases||0), order: prev.order+(r.orderCases||0) });
     }
-    if (r.forecast != null) {
-      existingFcstMap.set(r.month, (existingFcstMap.get(r.month)||0) + r.forecast);
-    }
+    if (r.forecast != null) existingFcstMap.set(r.month, (existingFcstMap.get(r.month)||0) + r.forecast);
   }
 
   const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
@@ -649,154 +732,153 @@ function getDashboardRows() {
   statMap.forEach((_,m) => allMonths.add(m));
 
   const overridePrefix = fcKey + '|';
-
-  return [...allMonths].sort().map(month => {
+  const result = [...allMonths].sort().map(month => {
     const actual = actualMap.get(month);
     const existing = existingFcstMap.get(month);
     const stat = statMap.get(month);
     const ov = state.overrides[overridePrefix + month];
     const isHistorical = !!actual;
-    return {
-      month,
-      posCases: actual ? actual.pos : null,
-      invoiceCases: actual ? actual.invoice : null,
-      orderCases: actual ? actual.order : null,
-      existingForecast: existing ?? null,
-      statForecast: stat ?? null,
-      overrideVal: ov ?? null,
-      finalValue: ov ?? stat ?? existing ?? null,
-      isHistorical,
-    };
+    return { month, posCases: actual?actual.pos:null, invoiceCases: actual?actual.invoice:null,
+      orderCases: actual?actual.order:null, existingForecast: existing??null, statForecast: stat??null,
+      overrideVal: ov??null, finalValue: ov??stat??existing??null, isHistorical };
   });
+  state._cache.dashKey = key;
+  state._cache.dashRows = result;
+  return result;
 }
 
 // ============================================================
-// RENDER DASHBOARD
+// RENDER
 // ============================================================
 function renderDashboard() {
-  const rows = getDashboardRows();
-  renderChart(rows);
-  renderGrid(rows);
+  try {
+    const rows = getDashboardRows();
+    renderChart(rows);
+    renderGrid(rows);
+  } catch (e) {
+    showToast('Render error: ' + e.message, 'error');
+  }
 }
 
 function fmt(v) { return v != null ? Number(v).toLocaleString(undefined, {maximumFractionDigits:0}) : ''; }
-
-function fmtMonth(m) {
-  const d = new Date(m + 'T00:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
-}
+function fmtMonth(m) { const d = new Date(m + 'T00:00:00'); return d.toLocaleDateString('en-US', { month:'short', year:'2-digit' }); }
 
 // ============================================================
 // CHART
 // ============================================================
 function renderChart(rows) {
   const ctx = document.getElementById('forecast-chart');
-  if (chart) chart.destroy();
-
   const labels = rows.map(r => fmtMonth(r.month));
-  chart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels,
-      datasets: [
-        { label: 'POS', data: rows.map(r=>r.posCases), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
-        { label: 'Invoice', data: rows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
-        { label: 'Orders', data: rows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
-        { label: 'Existing Fcst', data: rows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
-        { label: 'Stat Forecast', data: rows.map(r=>r.statForecast), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
-        { label: 'Override', data: rows.map(r=>r.overrideVal), borderColor: '#22c55e', borderWidth: 0, pointRadius: rows.map(r=>r.overrideVal!=null?5:0), pointBackgroundColor: '#22c55e', spanGaps: false, showLine: false },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { labels: { font: { size: 11 } } } },
-      scales: {
-        x: { ticks: { font: { size: 10 }, maxTicksLimit: 20 } },
-        y: { ticks: { font: { size: 10 } } },
+  const datasets = [
+    { label: 'POS', data: rows.map(r=>r.posCases), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Invoice', data: rows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Orders', data: rows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Existing Fcst', data: rows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Stat Forecast', data: rows.map(r=>r.statForecast), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Override', data: rows.map(r=>r.overrideVal), borderColor: '#22c55e', borderWidth: 0, pointRadius: rows.map(r=>r.overrideVal!=null?5:0), pointBackgroundColor: '#22c55e', spanGaps: false, showLine: false },
+  ];
+
+  if (chart) {
+    chart.data.labels = labels;
+    chart.data.datasets.forEach((ds, i) => { ds.data = datasets[i].data; if (datasets[i].pointRadius) ds.pointRadius = datasets[i].pointRadius; });
+    chart.update('none');
+  } else {
+    chart = new Chart(ctx, {
+      type: 'line', data: { labels, datasets },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 300 },
+        interaction: { mode: 'index', intersect: false },
+        plugins: { legend: { labels: { font: { size: 11 }, usePointStyle: true, pointStyle: 'line' } } },
+        scales: { x: { ticks: { font: { size: 10 }, maxTicksLimit: 20 } }, y: { ticks: { font: { size: 10 } } } },
       },
-    },
-  });
+    });
+  }
 }
 
 // ============================================================
-// DATA GRID
+// DATA GRID (DocumentFragment for performance)
 // ============================================================
 function renderGrid(rows) {
   const tbody = document.getElementById('grid-body');
-  tbody.innerHTML = rows.map(r => {
-    const overrideCell = r.isHistorical
-      ? `<td class="num"></td>`
-      : `<td class="num"><input type="number" value="${r.overrideVal ?? ''}" onchange="setOverride('${r.month}', this.value === '' ? null : this.value)" ${r.overrideVal != null ? 'class="override-cell"' : ''}></td>`;
-    return `<tr>
-      <td>${r.month}</td>
-      <td class="num">${fmt(r.posCases)}</td>
-      <td class="num">${fmt(r.invoiceCases)}</td>
-      <td class="num">${fmt(r.orderCases)}</td>
-      <td class="num">${fmt(r.existingForecast)}</td>
-      <td class="num" style="color:#8b5cf6">${fmt(r.statForecast)}</td>
-      ${overrideCell}
-      <td class="num" style="font-weight:bold">${fmt(r.finalValue)}</td>
-    </tr>`;
-  }).join('');
+  const frag = document.createDocumentFragment();
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + r.month + '</td>' +
+      '<td class="num">' + fmt(r.posCases) + '</td>' +
+      '<td class="num">' + fmt(r.invoiceCases) + '</td>' +
+      '<td class="num">' + fmt(r.orderCases) + '</td>' +
+      '<td class="num">' + fmt(r.existingForecast) + '</td>' +
+      '<td class="num stat-color">' + fmt(r.statForecast) + '</td>' +
+      (r.isHistorical
+        ? '<td class="num"></td>'
+        : '<td class="num' + (r.overrideVal != null ? ' override-cell' : '') + '"><input type="number" value="' + (r.overrideVal ?? '') + '" data-month="' + r.month + '"></td>') +
+      '<td class="num final-bold">' + fmt(r.finalValue) + '</td>';
+    frag.appendChild(tr);
+  }
+  tbody.textContent = '';
+  tbody.appendChild(frag);
+
+  // Attach override listeners via delegation
+  tbody.onchange = function(e) {
+    if (e.target.tagName === 'INPUT' && e.target.dataset.month) {
+      setOverride(e.target.dataset.month, e.target.value === '' ? null : e.target.value);
+    }
+  };
 }
 
 // ============================================================
-// EXCEL EXPORT
+// EXPORT
 // ============================================================
 function exportExcel() {
-  const rows = getDashboardRows();
-  const wb = XLSX.utils.book_new();
-
-  // History tab
-  const hist = rows.filter(r=>r.isHistorical).map(r=>({Month:r.month, 'POS Cases':r.posCases, 'Invoice Cases':r.invoiceCases, 'Order Cases':r.orderCases}));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(hist), 'History');
-
-  // Existing Forecast tab
-  const ef = rows.filter(r=>r.existingForecast!=null).map(r=>({Month:r.month, 'Existing Forecast':r.existingForecast}));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ef), 'Existing Forecast');
-
-  // Statistical Forecast tab
-  const sf = rows.filter(r=>r.statForecast!=null).map(r=>({Month:r.month, 'Stat Forecast':r.statForecast}));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sf), 'Statistical Forecast');
-
-  // Final Forecast tab
-  const ff = rows.filter(r=>!r.isHistorical).map(r=>({Month:r.month, Final:r.finalValue, Override:r.overrideVal, Source:r.overrideVal!=null?'Override':'Statistical'}));
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(ff), 'Final Forecast');
-
-  // Config tab
-  const params = getConfigParams();
-  const cfg = [
-    {Parameter:'Customer', Value: state.filters.customer||'All'},
-    {Parameter:'Product', Value: state.filters.product||'All'},
-    {Parameter:'Method', Value: params.method},
-    {Parameter:'Source', Value: params.source},
-    {Parameter:'Window', Value: params.window},
-    {Parameter:'Weight Profile', Value: params.weightProfile},
-    {Parameter:'Alpha', Value: params.alpha},
-    {Parameter:'Seasonality', Value: params.seasonality?'Yes':'No'},
-  ];
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(cfg), 'Config');
-
-  XLSX.writeFile(wb, `forecast_${state.filters.customer||'all'}_${state.filters.product||'all'}.xlsx`);
+  try {
+    showLoading('Generating Excel...');
+    requestAnimationFrame(() => {
+      try {
+        const rows = getDashboardRows();
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+          rows.filter(r=>r.isHistorical).map(r=>({Month:r.month, 'POS Cases':r.posCases, 'Invoice Cases':r.invoiceCases, 'Order Cases':r.orderCases}))
+        ), 'History');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+          rows.filter(r=>r.existingForecast!=null).map(r=>({Month:r.month, 'Existing Forecast':r.existingForecast}))
+        ), 'Existing Forecast');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+          rows.filter(r=>r.statForecast!=null).map(r=>({Month:r.month, 'Stat Forecast':r.statForecast}))
+        ), 'Statistical Forecast');
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
+          rows.filter(r=>!r.isHistorical).map(r=>({Month:r.month, Final:r.finalValue, Override:r.overrideVal, Source:r.overrideVal!=null?'Override':'Statistical'}))
+        ), 'Final Forecast');
+        const params = getConfigParams();
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
+          {Parameter:'Customer', Value: state.filters.customer||'All'}, {Parameter:'Product', Value: state.filters.product||'All'},
+          {Parameter:'Method', Value: params.method}, {Parameter:'Source', Value: params.source},
+          {Parameter:'Window', Value: params.window}, {Parameter:'Weight Profile', Value: params.weightProfile},
+          {Parameter:'Alpha', Value: params.alpha}, {Parameter:'Seasonality', Value: params.seasonality?'Yes':'No'},
+        ]), 'Config');
+        XLSX.writeFile(wb, 'forecast_' + (state.filters.customer||'all') + '_' + (state.filters.product||'all') + '.xlsx');
+        hideLoading();
+        showToast('Excel exported successfully', 'success');
+      } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
+    });
+  } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
 }
 
 // ============================================================
 // EVENT HANDLERS
 // ============================================================
 let selectedFile = null;
-
 const dropZone = document.getElementById('drop-zone');
 const fileInput = document.getElementById('file-input');
 const processBtn = document.getElementById('process-btn');
 
 dropZone.addEventListener('click', () => fileInput.click());
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-blue-500', 'bg-blue-50'); });
-dropZone.addEventListener('dragleave', () => { dropZone.classList.remove('border-blue-500', 'bg-blue-50'); });
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('active'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
 dropZone.addEventListener('drop', e => {
   e.preventDefault();
-  dropZone.classList.remove('border-blue-500', 'bg-blue-50');
+  dropZone.classList.remove('active');
   const f = e.dataTransfer.files[0];
   if (f && (f.name.endsWith('.xlsx') || f.name.endsWith('.csv'))) {
     selectedFile = f;
@@ -805,7 +887,7 @@ dropZone.addEventListener('drop', e => {
     document.getElementById('upload-error').classList.add('hidden');
     document.getElementById('upload-result').classList.add('hidden');
   } else {
-    showError('Please upload an .xlsx or .csv file');
+    showUploadError('Please upload an .xlsx or .csv file');
   }
 });
 
@@ -822,47 +904,101 @@ fileInput.addEventListener('change', e => {
 
 processBtn.addEventListener('click', () => {
   if (!selectedFile) return;
-  processBtn.textContent = 'Processing...';
+  showLoading('Processing file...');
   processBtn.disabled = true;
 
   const reader = new FileReader();
   reader.onload = function(e) {
-    const result = parseFile(e.target.result);
-    processBtn.textContent = 'Process File';
-    processBtn.disabled = false;
+    try {
+      const result = parseFile(e.target.result);
+      hideLoading();
+      processBtn.disabled = false;
 
-    if (!result.success) {
-      showError(result.errors.join('; '));
-      return;
+      if (!result.success) {
+        showUploadError(result.errors.join('; '));
+        return;
+      }
+
+      loadData(result.rows, selectedFile.name);
+
+      processBtn.classList.add('hidden');
+      document.getElementById('result-rows').textContent = result.rowCount.toLocaleString();
+      document.getElementById('result-customers').textContent = state.customers.length;
+      document.getElementById('result-products').textContent = state.products.length;
+
+      if (result.errors.length > 0) {
+        const wDiv = document.getElementById('result-warnings');
+        wDiv.classList.remove('hidden');
+        wDiv.innerHTML = '<p class="font-medium">Warnings (' + result.errors.length + '):</p><ul class="list-disc mt-2">' +
+          result.errors.slice(0,5).map(e => '<li>' + sanitize(e) + '</li>').join('') +
+          (result.errors.length > 5 ? '<li>...and ' + (result.errors.length-5) + ' more</li>' : '') + '</ul>';
+      }
+      document.getElementById('upload-result').classList.remove('hidden');
+    } catch (err) {
+      hideLoading();
+      processBtn.disabled = false;
+      showUploadError('Processing failed: ' + err.message);
     }
-
-    loadData(result.rows, selectedFile.name);
-
-    // Show results
-    processBtn.classList.add('hidden');
-    document.getElementById('result-rows').textContent = result.rowCount.toLocaleString();
-    document.getElementById('result-customers').textContent = state.customers.length;
-    document.getElementById('result-products').textContent = state.products.length;
-
-    if (result.errors.length > 0) {
-      const wDiv = document.getElementById('result-warnings');
-      wDiv.classList.remove('hidden');
-      wDiv.innerHTML = '<p class="font-medium">Warnings (' + result.errors.length + '):</p><ul class="list-disc list-inside mt-1">' +
-        result.errors.slice(0,5).map(e => '<li>'+e+'</li>').join('') +
-        (result.errors.length > 5 ? '<li>...and '+(result.errors.length-5)+' more</li>' : '') + '</ul>';
-    }
-
-    document.getElementById('upload-result').classList.remove('hidden');
   };
+  reader.onerror = function() { hideLoading(); processBtn.disabled = false; showUploadError('Failed to read file'); };
   reader.readAsArrayBuffer(selectedFile);
 });
 
 document.getElementById('go-dashboard-btn').addEventListener('click', showDashboard);
 
-function showError(msg) {
+function showUploadError(msg) {
   const el = document.getElementById('upload-error');
-  el.textContent = msg;
+  document.getElementById('upload-error-text').textContent = msg;
   el.classList.remove('hidden');
+}
+
+// ============================================================
+// DEMO DATA
+// ============================================================
+function loadDemoData() {
+  showLoading('Generating demo data...');
+  requestAnimationFrame(() => {
+    try {
+      const customers = ['Petco', 'PetSmart', 'Chewy'];
+      const products = [
+        { productNumber: 'CDF-001', productName: 'Premium Canine Dry Kibble 30lb', brand: 'Canine', type: 'Dry Food', formation: 'Kibble' },
+        { productNumber: 'CDF-002', productName: 'Canine Active Dry Kibble 15lb', brand: 'Canine', type: 'Dry Food', formation: 'Kibble' },
+        { productNumber: 'CWF-001', productName: 'Canine Gourmet Wet Pate 12pk', brand: 'Canine', type: 'Wet Food', formation: 'Pate' },
+        { productNumber: 'FDF-001', productName: 'Feline Indoor Dry Kibble 12lb', brand: 'Feline', type: 'Dry Food', formation: 'Kibble' },
+        { productNumber: 'FWF-001', productName: 'Feline Select Wet Pate 12pk', brand: 'Feline', type: 'Wet Food', formation: 'Pate' },
+      ];
+      const baseVol = { 'CDF-001': 500, 'CDF-002': 350, 'CWF-001': 200, 'FDF-001': 400, 'FWF-001': 180 };
+      const custScale = { Petco: 1.0, PetSmart: 1.2, Chewy: 0.8 };
+      const rows = [];
+      const rand = (base, pct) => Math.round(base * (1 + (Math.random() - 0.5) * 2 * pct) * 100) / 100;
+
+      for (const cust of customers) {
+        for (const prod of products) {
+          const base = baseVol[prod.productNumber] * custScale[cust];
+          for (let mo = 0; mo < 24; mo++) {
+            const y = 2024 + Math.floor((2 + mo) / 12);
+            const m = (2 + mo) % 12;
+            const d = new Date(y, m + 1, 0);
+            const trend = 1 + mo * 0.005;
+            const v = base * trend;
+            rows.push({ customerName: cust, ...prod, month: d.toISOString().split('T')[0],
+              posCases: rand(v, 0.15), invoiceCases: rand(v * 1.05, 0.15), orderCases: rand(v * 1.02, 0.15), forecast: null });
+          }
+          for (let mo = 0; mo < 18; mo++) {
+            const y = 2026 + Math.floor((2 + mo) / 12);
+            const m = (2 + mo) % 12;
+            const d = new Date(y, m + 1, 0);
+            const trend = 1 + (24 + mo) * 0.005;
+            rows.push({ customerName: cust, ...prod, month: d.toISOString().split('T')[0],
+              posCases: null, invoiceCases: null, orderCases: null, forecast: Math.round(base * trend * 100) / 100 });
+          }
+        }
+      }
+      loadData(rows, 'demo-data.xlsx');
+      hideLoading();
+      showDashboard();
+    } catch (e) { hideLoading(); showToast('Demo data error: ' + e.message, 'error'); }
+  });
 }
 </script>
 </body>
