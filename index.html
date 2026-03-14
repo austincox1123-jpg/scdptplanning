@@ -877,7 +877,7 @@ function runBacktest() {
     else if (src === 'invoice') vol = r.invoiceCases || 0;
     else if (src === 'order') vol = r.orderCases || 0;
     else vol = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
-    if (vol <= 0) return;
+    if (vol <= 0) continue;
     const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
     prev.posCases += r.posCases || 0;
     prev.invoiceCases += r.invoiceCases || 0;
