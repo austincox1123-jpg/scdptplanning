@@ -300,6 +300,7 @@
                 <option value="pos_lag">POS-to-Shipment Lag</option>
                 <option value="consumption_rate">POS Consumption Rate</option>
                 <option value="linear_avg">Linear Average (Avg Weekly Run Rate)</option>
+                <option value="linear_slope">Linear Trend (Slope)</option>
               </select>
             </div>
             <div>
@@ -568,6 +569,7 @@ function runForecastEngine(actuals, params, horizon) {
       return consumptionRate(pos, ship, params.window, horizon);
     }
     case 'linear_avg': return linearAverage(series, params, horizon);
+    case 'linear_slope': return linearSlope(series, params, horizon);
     default: return weightedMovingAverage(series, params, horizon);
   }
 }
@@ -602,6 +604,40 @@ function linearAverage(actuals, params, horizon) {
     const daysInMonth = fd.getDate();
     const weeksInMonth = daysInMonth / 7;
     const forecast = Math.round(avgWeeklyRate * weeksInMonth * 100) / 100;
+    results.push({ month: fd.toISOString().split('T')[0], statValue: forecast });
+  }
+  return results;
+}
+
+// Linear Slope — fits y = mx + b via least squares regression over
+// the lookback window, then extrapolates the line forward.
+function linearSlope(actuals, params, horizon) {
+  if (!actuals.length) return [];
+  const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const win = Math.min(params.window, sorted.length);
+  const recent = sorted.slice(-win);
+
+  // x = 0,1,2,...,n-1  y = values
+  const n = recent.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) {
+    sumX += i;
+    sumY += recent[i].value;
+    sumXY += i * recent[i].value;
+    sumX2 += i * i;
+  }
+  const denom = n * sumX2 - sumX * sumX;
+  const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+  const intercept = (sumY - slope * sumX) / n;
+
+  const results = [];
+  const last = new Date(sorted[sorted.length - 1].month);
+  for (let i = 1; i <= horizon; i++) {
+    // x continues from where the lookback ended: last point was x = n-1
+    const x = (n - 1) + i;
+    const forecast = Math.max(0, Math.round((slope * x + intercept) * 100) / 100);
+    const fd = new Date(last);
+    fd.setMonth(fd.getMonth() + i + 1, 0);
     results.push({ month: fd.toISOString().split('T')[0], statValue: forecast });
   }
   return results;
