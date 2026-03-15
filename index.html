@@ -542,6 +542,28 @@ function parseFile(buffer) {
         maxWksPerMonth: toNum(m.maxWksPerMonth),
         weekNumber: toNum(m.weekNumber) });
     }
+
+    // Post-process: for each customer/product combo, find the first month with a forecast.
+    // Any row before that with null POS/Invoice/Order gets set to 0 (not null).
+    const comboFirstFcst = new Map();
+    for (const r of rows) {
+      if (r.forecast != null) {
+        const ck = r.customerName + '|' + r.productNumber;
+        if (!comboFirstFcst.has(ck) || r.month < comboFirstFcst.get(ck)) {
+          comboFirstFcst.set(ck, r.month);
+        }
+      }
+    }
+    for (const r of rows) {
+      const ck = r.customerName + '|' + r.productNumber;
+      const firstFcst = comboFirstFcst.get(ck);
+      if (firstFcst && r.month < firstFcst) {
+        if (r.posCases == null) r.posCases = 0;
+        if (r.invoiceCases == null) r.invoiceCases = 0;
+        if (r.orderCases == null) r.orderCases = 0;
+      }
+    }
+
     return { success: true, rows, errors, rowCount: rows.length };
   } catch (e) {
     return { success: false, rows: [], errors: ['Parse error: ' + (e.message || e)], rowCount: 0 };
