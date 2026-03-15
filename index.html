@@ -1470,10 +1470,28 @@ function toggleBacktestDetail() {
 // ============================================================
 // OVERRIDE
 // ============================================================
-function setOverride(month, value) {
-  const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all') + '|' + month;
+function setOverride(timeKeyStr, value) {
+  const prefix = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all') + '|';
+  const key = prefix + timeKeyStr;
+
   if (value === null || value === '') { delete state.overrides[key]; }
   else { state.overrides[key] = Number(value); }
+
+  // If this is a weekly override, recalculate the monthly override as sum of weeks
+  if (state.isWeekly && timeKeyStr.includes('-W')) {
+    const monthKey = timeKeyStr.split('-W')[0] + '-15';
+    const wks = state.weeksMap[monthKey] || 4;
+    let monthSum = 0;
+    let hasAnyWeekOverride = false;
+    for (let w = 1; w <= wks; w++) {
+      const wKey = prefix + timeKeyStr.split('-W')[0] + '-W' + w;
+      if (state.overrides[wKey] != null) { monthSum += state.overrides[wKey]; hasAnyWeekOverride = true; }
+    }
+    const monthOvKey = prefix + monthKey;
+    if (hasAnyWeekOverride) { state.overrides[monthOvKey] = Math.round(monthSum * 100) / 100; }
+    else { delete state.overrides[monthOvKey]; }
+  }
+
   invalidateCache();
   renderDashboard();
 }
@@ -1504,6 +1522,8 @@ function getDashboardRows() {
 
     // Aggregate actuals and existing forecasts by timeKey
     const weekActualMap = new Map(), weekFcstMap = new Map();
+    // Collect monthly-level existing forecasts to distribute to weeks
+    const monthlyExistingFcst = new Map();
     for (const r of filtered) {
       const tk = timeKey(r);
       const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
@@ -1511,7 +1531,24 @@ function getDashboardRows() {
         const prev = weekActualMap.get(tk) || { pos: 0, invoice: 0, order: 0 };
         weekActualMap.set(tk, { pos: prev.pos+(r.posCases||0), invoice: prev.invoice+(r.invoiceCases||0), order: prev.order+(r.orderCases||0) });
       }
-      if (r.forecast != null) weekFcstMap.set(tk, (weekFcstMap.get(tk)||0) + r.forecast);
+      if (r.forecast != null) {
+        if (r.weekNumber) {
+          // Weekly forecast row — use directly
+          weekFcstMap.set(tk, (weekFcstMap.get(tk)||0) + r.forecast);
+        } else {
+          // Monthly forecast row — collect for distribution
+          monthlyExistingFcst.set(r.month, (monthlyExistingFcst.get(r.month)||0) + r.forecast);
+        }
+      }
+    }
+    // Distribute monthly existing forecasts as weekly averages
+    for (const [monthKey, total] of monthlyExistingFcst) {
+      const wks = state.weeksMap[monthKey] || 4;
+      const weeklyAvg = Math.round(total / wks * 100) / 100;
+      for (let w = 1; w <= wks; w++) {
+        const wk = monthKey.substring(0, 7) + '-W' + w;
+        if (!weekFcstMap.has(wk)) weekFcstMap.set(wk, weeklyAvg);
+      }
     }
 
     // Build monthly aggregated rows with weekRows for drill-down
@@ -1527,10 +1564,12 @@ function getDashboardRows() {
       const ws = weekStatMap.get(tk);
       if (wa) { ma.pos += wa.pos; ma.invoice += wa.invoice; ma.order += wa.order; ma.hasActuals = true; }
       if (wf != null) { ma.fcst += wf; ma.hasFcst = true; }
+      const weekOv = state.overrides[overridePrefix + tk];
       ma.weekRows.push({
         timeKey: tk, posCases: wa?wa.pos:null, invoiceCases: wa?wa.invoice:null,
         orderCases: wa?wa.order:null, existingForecast: wf??null,
-        statForecast: ws??null, isHistorical: !!wa
+        statForecast: ws??null, overrideVal: weekOv??null,
+        finalValue: weekOv??ws??wf??null, isHistorical: !!wa
       });
     }
 
@@ -1720,8 +1759,9 @@ function renderGrid(rows) {
         wtr.innerHTML = buildGridRow({
           month: w.timeKey, posCases: w.posCases, invoiceCases: w.invoiceCases,
           orderCases: w.orderCases, existingForecast: w.existingForecast,
-          statForecast: null, overrideVal: null, finalValue: null, isHistorical: w.isHistorical
-        }, true);
+          statForecast: w.statForecast, overrideVal: w.overrideVal,
+          finalValue: w.finalValue, isHistorical: w.isHistorical
+        }, false); // false = not read-only, allow override edits on future weeks
         frag.appendChild(wtr);
       }
     }
