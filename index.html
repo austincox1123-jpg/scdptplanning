@@ -945,11 +945,54 @@ function saveForecast() {
 // ============================================================
 // BULK FORECAST — run current config on every customer/product combo
 // ============================================================
+// Find best method for a given set of actuals (returns {method, wmape} or null)
+function findBestMethodForData(actualData, baseParams) {
+  const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope'];
+  const hasPOS = actualData.some(r => (r.posCases || 0) > 0);
+  if (hasPOS) methods.push('pos_lag', 'consumption_rate');
+
+  const LAG = 2;
+  let bestMethod = baseParams.method;
+  let bestWmape = Infinity;
+
+  for (const method of methods) {
+    const params = { ...baseParams, method };
+    const minHistory = Math.max(params.window, 3) + LAG;
+    if (actualData.length < minHistory) continue;
+
+    let totalActual = 0, totalAbsError = 0, count = 0;
+    const src = params.source;
+
+    for (let i = minHistory; i < actualData.length; i++) {
+      const trainingData = actualData.slice(0, i - LAG);
+      if (trainingData.length < params.window) continue;
+      const fcResults = runForecastEngine(trainingData, params, LAG);
+      if (fcResults.length < LAG) continue;
+      const fcValue = fcResults[LAG - 1].statValue;
+      let actual = 0;
+      if (src === 'pos') actual = actualData[i].posCases || 0;
+      else if (src === 'invoice') actual = actualData[i].invoiceCases || 0;
+      else if (src === 'order') actual = actualData[i].orderCases || 0;
+      else actual = ((actualData[i].posCases||0)*0.33 + (actualData[i].invoiceCases||0)*0.34 + (actualData[i].orderCases||0)*0.33);
+      if (actual <= 0) continue;
+      totalActual += actual;
+      totalAbsError += Math.abs(fcValue - actual);
+      count++;
+    }
+
+    if (count > 0 && totalActual > 0) {
+      const wmape = totalAbsError / totalActual;
+      if (wmape < bestWmape) { bestWmape = wmape; bestMethod = method; }
+    }
+  }
+  return { method: bestMethod, wmape: bestWmape };
+}
+
 function bulkForecast() {
-  showLoading('Forecasting all SKUs...');
+  showLoading('Forecasting all SKUs (finding best method per SKU)...');
   requestAnimationFrame(() => {
     try {
-      const params = getConfigParams();
+      const baseParams = getConfigParams();
       // Find every unique customer/product combo with actual data
       const combos = new Map();
       for (const r of state.parsedRows) {
@@ -961,8 +1004,8 @@ function bulkForecast() {
       }
 
       let saved = 0, skipped = 0;
+      const methodCounts = {};
       for (const [key, rows] of combos) {
-        // Aggregate by month for this combo
         const monthAgg = new Map();
         for (const r of rows) {
           const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
@@ -972,22 +1015,29 @@ function bulkForecast() {
           monthAgg.set(r.month, prev);
         }
         const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
-        if (actualData.length < params.window) { skipped++; continue; }
+        if (actualData.length < baseParams.window) { skipped++; continue; }
+
+        // Find best method for this specific SKU
+        const best = findBestMethodForData(actualData, baseParams);
+        const params = { ...baseParams, method: best.method };
 
         const results = runForecastEngine(actualData, params, 18);
         if (!results.length) { skipped++; continue; }
 
         state.skuForecasts[key] = results;
-        // Also put into forecastResults so the dashboard can show it
         state.forecastResults[key] = results;
+        methodCounts[best.method] = (methodCounts[best.method] || 0) + 1;
         saved++;
       }
+
+      // Build method summary for toast
+      const methodSummary = Object.entries(methodCounts).map(([m,c]) => m + ': ' + c).join(', ');
 
       invalidateCache();
       renderDashboard();
       renderSavedPanel();
       hideLoading();
-      showToast('Forecasted ' + saved + ' SKUs' + (skipped ? ' (' + skipped + ' skipped — not enough data)' : ''), 'success');
+      showToast('Forecasted ' + saved + ' SKUs (' + methodSummary + ')' + (skipped ? ' · ' + skipped + ' skipped' : ''), 'success');
     } catch (e) {
       hideLoading();
       showToast('Bulk forecast error: ' + e.message, 'error');
