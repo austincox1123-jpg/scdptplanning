@@ -433,7 +433,8 @@ const state = {
   overrides: {},
   hasPosData: false,
   excludedMonths: new Set(),  // set of "YYYY-MM-15" month keys to exclude from forecast
-  isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
+  isWeekly: false,
+  hasUploadedWeeks: false,    // true only when upload file had MAX_WKS_PER_MONTH column with data       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
   weeksMap: {},          // month string => maxWksPerMonth value from upload
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
@@ -696,14 +697,12 @@ function extractSeries(rows, source) {
 
 function runForecastEngine(actuals, params, horizon) {
   const wm = state.weeksMap;
-  const hasWeeksMap = Object.keys(wm).length > 0;
+  // Only normalize by weeks if the UPLOAD FILE had MAX_WKS_PER_MONTH — not from the default editor
+  const shouldNormalizeWeeks = !state.isWeekly && state.hasUploadedWeeks;
 
-  // If data is weekly, actuals are already at week level — run forecast on weekly series
-  // If monthly with MAX_WKS_PER_MONTH, normalize to per-week, forecast, scale back up
   let series = extractSeries(actuals, params.source);
 
-  if (!state.isWeekly && hasWeeksMap) {
-    // Monthly data with weeks info: normalize to per-week basis
+  if (shouldNormalizeWeeks) {
     series = series.map(p => {
       const wks = wm[p.month] || 4;
       return { month: p.month, value: p.value / wks };
@@ -717,7 +716,7 @@ function runForecastEngine(actuals, params, horizon) {
     case 'pos_lag': {
       let pos = extractSeries(actuals, 'pos');
       let ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
-      if (!state.isWeekly && hasWeeksMap) {
+      if (shouldNormalizeWeeks) {
         pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
         ship = ship.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
       }
@@ -727,7 +726,7 @@ function runForecastEngine(actuals, params, horizon) {
     case 'consumption_rate': {
       let pos = extractSeries(actuals, 'pos');
       let ord = extractSeries(actuals, 'order');
-      if (!state.isWeekly && hasWeeksMap) {
+      if (shouldNormalizeWeeks) {
         pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
         ord = ord.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
       }
@@ -740,8 +739,8 @@ function runForecastEngine(actuals, params, horizon) {
     default: results = weightedMovingAverage(series, params, horizon);
   }
 
-  // Scale back up by weeks per month (only for monthly data with weeks info, NOT weekly data)
-  if (!state.isWeekly && hasWeeksMap && results.length) {
+  // Scale back up only if we normalized in the first place
+  if (shouldNormalizeWeeks && results.length) {
     results = results.map(r => {
       const wks = wm[r.month] || 4;
       return { month: r.month, statValue: Math.round(r.statValue * wks * 100) / 100 };
@@ -972,13 +971,13 @@ function loadData(rows, fileName) {
 
   // Initialize weeks-per-month from upload data or default 4-4-5
   state.weeksPerMonthConfig = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5]; // index 0=Jan
-  // If upload has MAX_WKS_PER_MONTH, use those to seed the config
-  for (const r of rows) {
-    if (r.maxWksPerMonth != null) {
-      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
-      if (moMatch) {
-        const mi = parseInt(moMatch[2]) - 1;
-        state.weeksPerMonthConfig[mi] = r.maxWksPerMonth;
+  // Only flag hasUploadedWeeks if the file actually had MAX_WKS_PER_MONTH values
+  state.hasUploadedWeeks = rows.some(r => r.maxWksPerMonth != null);
+  if (state.hasUploadedWeeks) {
+    for (const r of rows) {
+      if (r.maxWksPerMonth != null) {
+        const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+        if (moMatch) state.weeksPerMonthConfig[parseInt(moMatch[2]) - 1] = r.maxWksPerMonth;
       }
     }
   }
