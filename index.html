@@ -167,9 +167,8 @@
           <div class="grid grid-cols-2-3 gap-1">
             <span class="col-tag">CUSTOMER_NAME *</span>
             <span class="col-tag">PRODUCTNUMBER *</span>
-            <span class="col-tag">END_OF_MONTH_EPOCH</span>
-            <span class="col-tag">MONTH_NUMBER_OF_YEAR</span>
-            <span class="col-tag">YEAR</span>
+            <span class="col-tag">MONTH_NUMBER_OF_YEAR *</span>
+            <span class="col-tag">YEAR *</span>
             <span class="col-tag">BRAND</span>
             <span class="col-tag">TYPE</span>
             <span class="col-tag">FORMATION</span>
@@ -180,7 +179,7 @@
             <span class="col-tag">FORECAST</span>
             <span class="col-tag">MAX_WKS_PER_MONTH</span>
           </div>
-          <p class="text-xs text-gray-400 mt-2">* Required: CUSTOMER_NAME, PRODUCTNUMBER, and either END_OF_MONTH_EPOCH or MONTH_NUMBER_OF_YEAR + YEAR</p>
+          <p class="text-xs text-gray-400 mt-2">* Required columns</p>
         </div>
 
         <div id="drop-zone" class="drop-zone">
@@ -377,7 +376,6 @@ const state = {
   previewParams: null,   // config params used for the preview
   overrides: {},
   hasPosData: false,
-  useMidMonth: false,    // true when data uses MONTH_NUMBER_OF_YEAR + YEAR (day 15)
   weeksMap: {},          // month string => maxWksPerMonth value from upload
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
 };
@@ -402,14 +400,9 @@ function sanitize(str) { const d = document.createElement('div'); d.textContent 
 // Format date as YYYY-MM-DD using local time (avoids UTC timezone shift bugs with toISOString)
 function dateStr(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 
-// Generate a forecast month date string, i months after lastDate
+// Generate a forecast month date string, i months after lastDate (always day 15)
 function forecastMonth(lastDate, i) {
-  if (state.useMidMonth) {
-    const d = new Date(lastDate.getFullYear(), lastDate.getMonth() + i, 15);
-    return dateStr(d);
-  }
-  const d = new Date(lastDate);
-  d.setMonth(d.getMonth() + i + 1, 0); // last day of the target month
+  const d = new Date(lastDate.getFullYear(), lastDate.getMonth() + i, 15);
   return dateStr(d);
 }
 
@@ -419,12 +412,12 @@ function forecastMonth(lastDate, i) {
 const COLUMN_MAP = {
   'CUSTOMER_NAME': 'customerName', 'BRAND': 'brand', 'TYPE': 'type',
   'FORMATION': 'formation', 'PRODUCTNAME': 'productName', 'PRODUCTNUMBER': 'productNumber',
-  'END_OF_MONTH_EPOCH': 'endOfMonthEpoch', 'POS CASES': 'posCases',
+  'POS CASES': 'posCases',
   'INVOICE CASES': 'invoiceCases', 'ORDER CASES': 'orderCases', 'FORECAST': 'forecast',
   'MAX_WKS_PER_MONTH': 'maxWksPerMonth',
   'MONTH_NUMBER_OF_YEAR': 'monthNumber', 'YEAR': 'year',
 };
-const REQUIRED = ['CUSTOMER_NAME', 'PRODUCTNUMBER']; // date columns validated separately
+const REQUIRED = ['CUSTOMER_NAME', 'PRODUCTNUMBER', 'MONTH_NUMBER_OF_YEAR', 'YEAR'];
 
 function mapRow(raw, headers) {
   const mapped = {};
@@ -445,11 +438,6 @@ function parseFile(buffer) {
     const missing = REQUIRED.filter(c => !upperHeaders.includes(c));
     if (missing.length) return { success: false, rows: [], errors: ['Missing required columns: ' + missing.join(', ')], rowCount: 0 };
 
-    // Check for date columns: prefer MONTH_NUMBER_OF_YEAR + YEAR, fall back to END_OF_MONTH_EPOCH
-    const hasMonthYear = upperHeaders.includes('MONTH_NUMBER_OF_YEAR') && upperHeaders.includes('YEAR');
-    const hasEpoch = upperHeaders.includes('END_OF_MONTH_EPOCH');
-    if (!hasMonthYear && !hasEpoch) return { success: false, rows: [], errors: ['Missing date columns: provide MONTH_NUMBER_OF_YEAR + YEAR, or END_OF_MONTH_EPOCH'], rowCount: 0 };
-
     const rows = [], errors = [];
     for (let i = 0; i < rawData.length; i++) {
       const m = mapRow(rawData[i], headers);
@@ -458,25 +446,10 @@ function parseFile(buffer) {
       if (!customerName) { errors.push('Row ' + (i+2) + ': Missing CUSTOMER_NAME'); continue; }
       if (!productNumber) { errors.push('Row ' + (i+2) + ': Missing PRODUCTNUMBER'); continue; }
 
-      let month;
-      if (hasMonthYear) {
-        // Use MONTH_NUMBER_OF_YEAR + YEAR, always day 15
-        const mn = parseInt(m.monthNumber);
-        const yr = parseInt(m.year);
-        if (!mn || !yr || mn < 1 || mn > 12) { errors.push('Row ' + (i+2) + ': Invalid month/year'); continue; }
-        month = yr + '-' + String(mn).padStart(2,'0') + '-15';
-      } else {
-        const rawDate = m.endOfMonthEpoch;
-        if (rawDate == null || rawDate === '') { errors.push('Row ' + (i+2) + ': Missing date'); continue; }
-        if (typeof rawDate === 'number') {
-          const d = XLSX.SSF.parse_date_code(rawDate);
-          month = d.y + '-' + String(d.m).padStart(2,'0') + '-' + String(d.d).padStart(2,'0');
-        } else {
-          const parsed = new Date(String(rawDate));
-          if (isNaN(parsed.getTime())) { errors.push('Row ' + (i+2) + ': Invalid date "' + rawDate + '"'); continue; }
-          month = dateStr(parsed);
-        }
-      }
+      const mn = parseInt(m.monthNumber);
+      const yr = parseInt(m.year);
+      if (!mn || !yr || mn < 1 || mn > 12) { errors.push('Row ' + (i+2) + ': Invalid month/year'); continue; }
+      const month = yr + '-' + String(mn).padStart(2,'0') + '-15';
 
       const toNum = (v) => (v != null && v !== '' && !isNaN(Number(v))) ? Number(v) : null;
       rows.push({ customerName, brand: String(m.brand||'').trim(), type: String(m.type||'').trim(),
@@ -762,8 +735,6 @@ function loadData(rows, fileName) {
   state.products = [...prodSet.values()].sort((a,b) => a.productName.localeCompare(b.productName));
   state.hasPosData = rows.some(r => r.posCases != null && r.posCases > 0);
 
-  // Detect if data uses mid-month dates (day 15 from MONTH_NUMBER_OF_YEAR + YEAR)
-  state.useMidMonth = rows.length > 0 && rows[0].month && rows[0].month.endsWith('-15');
 
   // Build weeks-per-month lookup from MAX_WKS_PER_MONTH column
   state.weeksMap = {};
@@ -1593,13 +1564,9 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       PRODUCTNAME: r.productName,
       PRODUCTNUMBER: r.productNumber,
     };
-    if (state.useMidMonth) {
-      const parts = r.month.split('-');
-      row['YEAR'] = parseInt(parts[0]);
-      row['MONTH_NUMBER_OF_YEAR'] = parseInt(parts[1]);
-    } else {
-      row['END_OF_MONTH_EPOCH'] = r.month;
-    }
+    const parts = r.month.split('-');
+    row['YEAR'] = parseInt(parts[0]);
+    row['MONTH_NUMBER_OF_YEAR'] = parseInt(parts[1]);
     row['POS CASES'] = r.posCases;
     row['INVOICE CASES'] = r.invoiceCases;
     row['ORDER CASES'] = r.orderCases;
@@ -1622,7 +1589,8 @@ function buildVarianceRows(exportRows) {
         CUSTOMER_NAME: r.CUSTOMER_NAME,
         PRODUCTNUMBER: r.PRODUCTNUMBER,
         PRODUCTNAME: r.PRODUCTNAME,
-        END_OF_MONTH_EPOCH: r.END_OF_MONTH_EPOCH,
+        YEAR: r.YEAR,
+        MONTH_NUMBER_OF_YEAR: r.MONTH_NUMBER_OF_YEAR,
         'EXISTING FORECAST': r['FORECAST'],
         'UPDATED FORECAST': r['UPDATED FORECAST'],
         'VARIANCE': Math.round(delta * 100) / 100,
