@@ -1267,32 +1267,56 @@ function renderGrid(rows) {
 // ============================================================
 // EXPORT
 // ============================================================
+// Builds export rows mirroring the upload file format + UPDATED FORECAST + METHOD columns
+function buildExportRows(customerFilter, productFilter, skuForecastMap, overrides) {
+  const params = getConfigParams();
+  const methodLabel = params.method;
+
+  // Get source rows from parsed data matching the filters
+  const sourceRows = state.parsedRows.filter(r => {
+    if (customerFilter && r.customerName !== customerFilter) return false;
+    if (productFilter && r.productNumber !== productFilter) return false;
+    return true;
+  });
+
+  return sourceRows.map(r => {
+    // Look up forecast for this SKU
+    const fcKey = r.customerName + '|' + r.productNumber;
+    const skuResults = skuForecastMap[fcKey] || [];
+    const statMap = new Map(skuResults.map(f => [f.month, f.statValue]));
+    const ovKey = fcKey + '|' + r.month;
+    const ov = overrides[ovKey];
+    const stat = statMap.get(r.month);
+    const updatedForecast = ov ?? stat ?? null;
+
+    const row = {
+      CUSTOMER_NAME: r.customerName,
+      BRAND: r.brand,
+      TYPE: r.type,
+      FORMATION: r.formation,
+      PRODUCTNAME: r.productName,
+      PRODUCTNUMBER: r.productNumber,
+      END_OF_MONTH_EPOCH: r.month,
+      'POS CASES': r.posCases,
+      'INVOICE CASES': r.invoiceCases,
+      'ORDER CASES': r.orderCases,
+      FORECAST: r.forecast,
+    };
+    if (r.maxWksPerMonth != null) row['MAX_WKS_PER_MONTH'] = r.maxWksPerMonth;
+    row['UPDATED FORECAST'] = updatedForecast;
+    row['METHOD'] = updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null;
+    return row;
+  });
+}
+
 function exportExcel() {
   try {
     showLoading('Generating Excel...');
     requestAnimationFrame(() => {
       try {
-        const rows = getDashboardRows();
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-          rows.filter(r=>r.isHistorical).map(r=>({Month:r.month, 'POS Cases':r.posCases, 'Invoice Cases':r.invoiceCases, 'Order Cases':r.orderCases}))
-        ), 'History');
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-          rows.filter(r=>r.existingForecast!=null).map(r=>({Month:r.month, 'Existing Forecast':r.existingForecast}))
-        ), 'Existing Forecast');
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-          rows.filter(r=>r.statForecast!=null).map(r=>({Month:r.month, 'Stat Forecast':r.statForecast}))
-        ), 'Statistical Forecast');
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(
-          rows.filter(r=>!r.isHistorical).map(r=>({Month:r.month, Final:r.finalValue, Override:r.overrideVal, Source:r.overrideVal!=null?'Override':'Statistical'}))
-        ), 'Final Forecast');
-        const params = getConfigParams();
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet([
-          {Parameter:'Customer', Value: state.filters.customer||'All'}, {Parameter:'Product', Value: state.filters.product||'All'},
-          {Parameter:'Method', Value: params.method}, {Parameter:'Source', Value: params.source},
-          {Parameter:'Window', Value: params.window}, {Parameter:'Weight Profile', Value: params.weightProfile},
-          {Parameter:'Alpha', Value: params.alpha}, {Parameter:'Seasonality', Value: params.seasonality?'Yes':'No'},
-        ]), 'Config');
+        const rows = buildExportRows(state.filters.customer, state.filters.product, state.skuForecasts, state.overrides);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Forecast');
         XLSX.writeFile(wb, 'forecast_' + (state.filters.customer||'all') + '_' + (state.filters.product||'all') + '.xlsx');
         hideLoading();
         showToast('Excel exported successfully', 'success');
@@ -1314,62 +1338,14 @@ function exportAllForecasts() {
       try {
         const wb = XLSX.utils.book_new();
 
-        // Summary tab — one row per SKU with config info
-        const summary = keys.map(key => {
-          const [cust, prod] = key.split('|');
-          const results = state.skuForecasts[key];
-          const overrideCount = Object.keys(state.overrides).filter(k => k.startsWith(key + '|')).length;
-          return { Customer: cust, Product: prod, 'Forecast Months': results.length, Overrides: overrideCount };
-        });
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), 'Summary');
-
-        // One tab per SKU forecast (sheet name limited to 31 chars)
-        for (const key of keys) {
-          const [cust, prod] = key.split('|');
-          const results = state.skuForecasts[key];
-          const overridePrefix = key + '|';
-
-          // Get actuals for this combo
-          const actuals = state.parsedRows.filter(r => r.customerName === cust && r.productNumber === prod);
-          const actualMap = new Map();
-          const existingMap = new Map();
-          for (const r of actuals) {
-            if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
-              actualMap.set(r.month, { pos: r.posCases, invoice: r.invoiceCases, order: r.orderCases });
-            }
-            if (r.forecast != null) existingMap.set(r.month, r.forecast);
-          }
-          const statMap = new Map(results.map(r => [r.month, r.statValue]));
-
-          const allMonths = new Set();
-          actualMap.forEach((_,m) => allMonths.add(m));
-          existingMap.forEach((_,m) => allMonths.add(m));
-          statMap.forEach((_,m) => allMonths.add(m));
-
-          const sheetRows = [...allMonths].sort().map(month => {
-            const act = actualMap.get(month);
-            const existing = existingMap.get(month);
-            const stat = statMap.get(month);
-            const ov = state.overrides[overridePrefix + month];
-            return {
-              Month: month,
-              'POS Cases': act ? act.pos : null,
-              'Invoice Cases': act ? act.invoice : null,
-              'Order Cases': act ? act.order : null,
-              'Existing Forecast': existing ?? null,
-              'Stat Forecast': stat ?? null,
-              Override: ov ?? null,
-              Final: ov ?? stat ?? existing ?? null,
-            };
-          });
-
-          const sheetName = (cust + '_' + prod).substring(0, 31);
-          XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sheetRows), sheetName);
-        }
+        // Single sheet with ALL rows in upload format + UPDATED FORECAST + METHOD
+        // No filter — include every parsed row, with forecasts filled in where they exist
+        const allRows = buildExportRows('', '', state.skuForecasts, state.overrides);
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allRows), 'All Forecasts');
 
         XLSX.writeFile(wb, 'forecast_all_skus.xlsx');
         hideLoading();
-        showToast('Exported ' + keys.length + ' SKU forecasts', 'success');
+        showToast('Exported all forecasts (' + allRows.length + ' rows)', 'success');
       } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
     });
   } catch (e) { hideLoading(); showToast('Export error: ' + e.message, 'error'); }
