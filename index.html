@@ -204,8 +204,10 @@
         <button id="process-btn" class="mt-6 w-full py-3 btn-primary text-base hidden">Process File</button>
 
         <div class="mt-4 text-center">
-          <span class="text-xs text-gray-400">or</span>
-          <button onclick="loadDemoData()" style="background:none; font-size:14px;" class="ml-2 text-blue-600 underline">Load Demo Data</button>
+          <span class="text-xs text-gray-400">or load demo data:</span>
+          <button onclick="loadDemoMonthly()" style="background:none; font-size:14px;" class="ml-2 text-blue-600 underline">Monthly</button>
+          <span class="text-xs text-gray-400">|</span>
+          <button onclick="loadDemoWeekly()" style="background:none; font-size:14px;" class="ml-2 text-blue-600 underline">Weekly</button>
         </div>
 
         <div id="upload-result" class="mt-6 card p-6 hidden" style="background:#f0fdf4; border-color:#bbf7d0;">
@@ -1946,50 +1948,99 @@ function showUploadError(msg) {
 // ============================================================
 // DEMO DATA
 // ============================================================
-function loadDemoData() {
-  showLoading('Generating demo data...');
+// Shared demo constants
+const DEMO_CUSTOMERS = ['Petco', 'PetSmart', 'Chewy'];
+const DEMO_PRODUCTS = [
+  { productNumber: 'CDF-001', productName: 'Premium Canine Dry Kibble 30lb', brand: 'Canine', type: 'Dry Food', formation: 'Kibble' },
+  { productNumber: 'CDF-002', productName: 'Canine Active Dry Kibble 15lb', brand: 'Canine', type: 'Dry Food', formation: 'Kibble' },
+  { productNumber: 'CWF-001', productName: 'Canine Gourmet Wet Pate 12pk', brand: 'Canine', type: 'Wet Food', formation: 'Pate' },
+  { productNumber: 'FDF-001', productName: 'Feline Indoor Dry Kibble 12lb', brand: 'Feline', type: 'Dry Food', formation: 'Kibble' },
+  { productNumber: 'FWF-001', productName: 'Feline Select Wet Pate 12pk', brand: 'Feline', type: 'Wet Food', formation: 'Pate' },
+];
+const DEMO_BASE_VOL = { 'CDF-001': 500, 'CDF-002': 350, 'CWF-001': 200, 'FDF-001': 400, 'FWF-001': 180 };
+const DEMO_CUST_SCALE = { Petco: 1.0, PetSmart: 1.2, Chewy: 0.8 };
+const DEMO_WKS = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5]; // 4-4-5 calendar
+const demoRand = (base, pct) => Math.round(base * (1 + (Math.random() - 0.5) * 2 * pct) * 100) / 100;
+
+function loadDemoMonthly() {
+  showLoading('Generating monthly demo data...');
   requestAnimationFrame(() => {
     try {
-      const customers = ['Petco', 'PetSmart', 'Chewy'];
-      const products = [
-        { productNumber: 'CDF-001', productName: 'Premium Canine Dry Kibble 30lb', brand: 'Canine', type: 'Dry Food', formation: 'Kibble' },
-        { productNumber: 'CDF-002', productName: 'Canine Active Dry Kibble 15lb', brand: 'Canine', type: 'Dry Food', formation: 'Kibble' },
-        { productNumber: 'CWF-001', productName: 'Canine Gourmet Wet Pate 12pk', brand: 'Canine', type: 'Wet Food', formation: 'Pate' },
-        { productNumber: 'FDF-001', productName: 'Feline Indoor Dry Kibble 12lb', brand: 'Feline', type: 'Dry Food', formation: 'Kibble' },
-        { productNumber: 'FWF-001', productName: 'Feline Select Wet Pate 12pk', brand: 'Feline', type: 'Wet Food', formation: 'Pate' },
-      ];
-      const baseVol = { 'CDF-001': 500, 'CDF-002': 350, 'CWF-001': 200, 'FDF-001': 400, 'FWF-001': 180 };
-      const custScale = { Petco: 1.0, PetSmart: 1.2, Chewy: 0.8 };
       const rows = [];
-      const rand = (base, pct) => Math.round(base * (1 + (Math.random() - 0.5) * 2 * pct) * 100) / 100;
-      // 4-4-5 calendar pattern: repeating quarterly
-      const wksPattern = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5];
-
-      for (const cust of customers) {
-        for (const prod of products) {
-          const base = baseVol[prod.productNumber] * custScale[cust];
+      for (const cust of DEMO_CUSTOMERS) {
+        for (const prod of DEMO_PRODUCTS) {
+          const base = DEMO_BASE_VOL[prod.productNumber] * DEMO_CUST_SCALE[cust];
+          // 24 months history: Mar 2024 – Feb 2026
           for (let mo = 0; mo < 24; mo++) {
             const y = 2024 + Math.floor((2 + mo) / 12);
             const m = (2 + mo) % 12;
             const month = y + '-' + String(m + 1).padStart(2,'0') + '-15';
             const trend = 1 + mo * 0.005;
             const v = base * trend;
-            const wks = wksPattern[m];
+            const wks = DEMO_WKS[m];
             rows.push({ customerName: cust, ...prod, month,
-              posCases: rand(v * wks/4, 0.15), invoiceCases: rand(v * 1.05 * wks/4, 0.15), orderCases: rand(v * 1.02 * wks/4, 0.15), forecast: null, maxWksPerMonth: wks });
+              posCases: demoRand(v * wks/4, 0.15), invoiceCases: demoRand(v * 1.05 * wks/4, 0.15),
+              orderCases: demoRand(v * 1.02 * wks/4, 0.15), forecast: null, maxWksPerMonth: wks, weekNumber: null });
           }
+          // 18 months existing forecast: Mar 2026 – Aug 2027
           for (let mo = 0; mo < 18; mo++) {
             const y = 2026 + Math.floor((2 + mo) / 12);
             const m = (2 + mo) % 12;
             const month = y + '-' + String(m + 1).padStart(2,'0') + '-15';
             const trend = 1 + (24 + mo) * 0.005;
-            const wks = wksPattern[m];
+            const wks = DEMO_WKS[m];
             rows.push({ customerName: cust, ...prod, month,
-              posCases: null, invoiceCases: null, orderCases: null, forecast: Math.round(base * trend * wks/4 * 100) / 100, maxWksPerMonth: wks });
+              posCases: null, invoiceCases: null, orderCases: null,
+              forecast: Math.round(base * trend * wks/4 * 100) / 100, maxWksPerMonth: wks, weekNumber: null });
           }
         }
       }
-      loadData(rows, 'demo-data.xlsx');
+      loadData(rows, 'demo-monthly.xlsx');
+      hideLoading();
+      showDashboard();
+    } catch (e) { hideLoading(); showToast('Demo data error: ' + e.message, 'error'); }
+  });
+}
+
+function loadDemoWeekly() {
+  showLoading('Generating weekly demo data...');
+  requestAnimationFrame(() => {
+    try {
+      const rows = [];
+      for (const cust of DEMO_CUSTOMERS) {
+        for (const prod of DEMO_PRODUCTS) {
+          const base = DEMO_BASE_VOL[prod.productNumber] * DEMO_CUST_SCALE[cust];
+          // 24 months history with weekly breakdown
+          for (let mo = 0; mo < 24; mo++) {
+            const y = 2024 + Math.floor((2 + mo) / 12);
+            const m = (2 + mo) % 12;
+            const month = y + '-' + String(m + 1).padStart(2,'0') + '-15';
+            const trend = 1 + mo * 0.005;
+            const v = base * trend;
+            const wks = DEMO_WKS[m];
+            // Split monthly volume across weeks
+            for (let w = 1; w <= wks; w++) {
+              const weekShare = 1 / wks; // equal split across weeks
+              const wv = v * weekShare;
+              rows.push({ customerName: cust, ...prod, month,
+                posCases: demoRand(wv, 0.2), invoiceCases: demoRand(wv * 1.05, 0.2),
+                orderCases: demoRand(wv * 1.02, 0.2), forecast: null, maxWksPerMonth: wks, weekNumber: w });
+            }
+          }
+          // 18 months existing forecast (monthly level, no week breakdown)
+          for (let mo = 0; mo < 18; mo++) {
+            const y = 2026 + Math.floor((2 + mo) / 12);
+            const m = (2 + mo) % 12;
+            const month = y + '-' + String(m + 1).padStart(2,'0') + '-15';
+            const trend = 1 + (24 + mo) * 0.005;
+            const wks = DEMO_WKS[m];
+            rows.push({ customerName: cust, ...prod, month,
+              posCases: null, invoiceCases: null, orderCases: null,
+              forecast: Math.round(base * trend * wks/4 * 100) / 100, maxWksPerMonth: wks, weekNumber: null });
+          }
+        }
+      }
+      loadData(rows, 'demo-weekly.xlsx');
       hideLoading();
       showDashboard();
     } catch (e) { hideLoading(); showToast('Demo data error: ' + e.message, 'error'); }
