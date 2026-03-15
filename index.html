@@ -474,13 +474,18 @@ function parseFile(buffer) {
     const wb = XLSX.read(buffer, { type: 'array' });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     if (!sheet) return { success: false, rows: [], errors: ['No sheets found in file'], rowCount: 0 };
-    const rawData = XLSX.utils.sheet_to_json(sheet);
+    const rawData = XLSX.utils.sheet_to_json(sheet, { defval: null });
     if (!rawData.length) return { success: false, rows: [], errors: ['Sheet is empty'], rowCount: 0 };
 
     const headers = Object.keys(rawData[0]);
     const normalizedHeaders = headers.map(normalizeHeader);
     const missing = REQUIRED.filter(c => !normalizedHeaders.includes(c));
-    if (missing.length) return { success: false, rows: [], errors: ['Missing required columns: ' + missing.join(', ')], rowCount: 0 };
+    if (missing.length) return { success: false, rows: [], errors: ['Missing required columns: ' + missing.join(', ') + '. Found columns: ' + headers.map(h => '"' + h + '" → "' + normalizeHeader(h) + '"').join(', ')], rowCount: 0 };
+
+    // Log detected vs expected columns for debugging
+    const matched = normalizedHeaders.filter(h => COLUMN_MAP[h]);
+    const unmatched = headers.filter(h => !COLUMN_MAP[normalizeHeader(h)]);
+    if (unmatched.length) console.log('Unrecognized columns:', unmatched.map(h => '"' + h + '" (normalized: "' + normalizeHeader(h) + '")'));
 
     const rows = [], errors = [];
     for (let i = 0; i < rawData.length; i++) {
