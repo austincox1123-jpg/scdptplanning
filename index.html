@@ -335,6 +335,7 @@
               <label for="cfg-seasonality" class="text-xs text-gray-600">Apply seasonal indices</label>
             </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
+            <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
           </div>
 
           <!-- Saved Forecasts Panel -->
@@ -359,7 +360,10 @@ const state = {
   products: [],
   filters: { customer: '', brand: '', type: '', formation: '', product: '' },
   forecastResults: {},   // key "customer|product" => [{month, statValue}]
-  skuForecasts: {},      // key "customer|productNumber" => [{month, statValue}] — disaggregated to SKU level
+  skuForecasts: {},      // key "customer|productNumber" => [{month, statValue}] — SAVED forecasts
+  previewResults: {},    // key "customer|product" => [{month, statValue}] — unsaved preview from Recalculate
+  previewFiltered: null, // filtered rows used for disaggregation preview
+  previewParams: null,   // config params used for the preview
   overrides: {},
   hasPosData: false,
   weeksMap: {},          // month string => maxWksPerMonth value from upload
@@ -586,12 +590,12 @@ function runForecastEngine(actuals, params, horizon) {
     }
     case 'consumption_rate': {
       let pos = extractSeries(actuals, 'pos');
-      let ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
+      let ord = extractSeries(actuals, 'order');
       if (hasWeeks) {
         pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
-        ship = ship.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
+        ord = ord.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
       }
-      results = consumptionRate(pos, ship, params.window, horizon);
+      results = consumptionRate(pos, ord, params.window, horizon);
       break;
     }
     case 'linear_avg': results = linearAverage(series, params, horizon); break;
@@ -704,6 +708,9 @@ function loadData(rows, fileName) {
   state.fileName = fileName;
   state.forecastResults = {};
   state.skuForecasts = {};
+  state.previewResults = {};
+  state.previewFiltered = null;
+  state.previewParams = null;
   state.overrides = {};
   state.weeksMap = {};
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
@@ -793,6 +800,8 @@ function onFilterChange() {
   state.filters.type = document.getElementById('filter-type').value;
   state.filters.formation = document.getElementById('filter-formation').value;
   state.filters.product = document.getElementById('filter-product').value;
+  // Hide save button — preview is stale after filter change
+  document.getElementById('save-forecast-btn').classList.add('hidden');
   invalidateCache();
   renderDashboard();
 }
@@ -849,16 +858,20 @@ function runForecast() {
         const params = getConfigParams();
         const results = runForecastEngine(actualData, params, 18);
         const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
-        state.forecastResults[key] = results;
 
-        // Disaggregate to SKU level if viewing an aggregate (no specific product selected)
-        disaggregateForecast(filtered, results, params);
+        // Store as preview only — not yet saved
+        state.previewResults[key] = results;
+        state.forecastResults[key] = results;
+        state.previewFiltered = filtered;
+        state.previewParams = { ...params };
+
+        // Show the Save button
+        document.getElementById('save-forecast-btn').classList.remove('hidden');
 
         invalidateCache();
         renderDashboard();
-        renderSavedPanel();
         hideLoading();
-        showToast('Forecast calculated: ' + results.length + ' months', 'success');
+        showToast('Preview ready — click Save to keep this forecast', 'success');
       } catch (e) {
         hideLoading();
         showToast('Forecast error: ' + e.message, 'error');
@@ -868,6 +881,28 @@ function runForecast() {
     hideLoading();
     showToast('Error: ' + e.message, 'error');
   }
+}
+
+function saveForecast() {
+  const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  const results = state.previewResults[key];
+  if (!results || !results.length) {
+    showToast('Nothing to save — run Recalculate first', 'error');
+    return;
+  }
+
+  // Disaggregate and persist to skuForecasts
+  const filtered = state.previewFiltered || getFilteredRows();
+  const params = state.previewParams || getConfigParams();
+  disaggregateForecast(filtered, results, params);
+
+  // Hide Save button
+  document.getElementById('save-forecast-btn').classList.add('hidden');
+  // Clear preview state for this key
+  delete state.previewResults[key];
+
+  renderSavedPanel();
+  showToast('Forecast saved for ' + (state.filters.customer || 'all filters'), 'success');
 }
 
 // ============================================================
@@ -963,11 +998,14 @@ function jumpToForecast(customer, product) {
   document.getElementById('filter-type').value = '';
   document.getElementById('filter-formation').value = '';
 
-  // Load the SKU forecast into forecastResults for display
+  // Load the saved SKU forecast into forecastResults for display
   const key = customer + '|' + product;
   if (state.skuForecasts[key]) {
     state.forecastResults[key] = state.skuForecasts[key];
   }
+  // Hide save button since we're viewing a saved forecast
+  document.getElementById('save-forecast-btn').classList.add('hidden');
+  delete state.previewResults[key];
 
   invalidateCache();
   renderDashboard();
