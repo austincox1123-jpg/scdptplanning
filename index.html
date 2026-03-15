@@ -346,7 +346,7 @@
                 <option value="pos">POS Cases</option>
                 <option value="invoice" selected>Invoice Cases</option>
                 <option value="order">Order Cases</option>
-                <option value="blended">Blended</option>
+                <option value="blended">Blended (POS + Order)</option>
               </select>
             </div>
             <div>
@@ -656,7 +656,7 @@ function extractSeries(rows, source) {
     if (source === 'pos') v = r.posCases;
     else if (source === 'invoice') v = r.invoiceCases;
     else if (source === 'order') v = r.orderCases;
-    else v = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
+    else v = ((r.posCases||0)*0.5 + (r.orderCases||0)*0.5);
     return { month: r.month, value: v || 0 };
   }).filter(p => p.value > 0).sort((a,b) => a.month.localeCompare(b.month));
 }
@@ -1267,11 +1267,8 @@ function findBestMethodForData(actualData, baseParams) {
       const fcResults = runForecastEngine(trainingData, params, LAG);
       if (fcResults.length < LAG) continue;
       const fcValue = fcResults[LAG - 1].statValue;
-      let actual = 0;
-      if (src === 'pos') actual = actualData[i].posCases || 0;
-      else if (src === 'invoice') actual = actualData[i].invoiceCases || 0;
-      else if (src === 'order') actual = actualData[i].orderCases || 0;
-      else actual = ((actualData[i].posCases||0)*0.33 + (actualData[i].invoiceCases||0)*0.34 + (actualData[i].orderCases||0)*0.33);
+      // Accuracy always measured against ORDER_CASES regardless of forecast source
+      const actual = actualData[i].orderCases || 0;
       if (actual <= 0) continue;
       totalActual += actual;
       totalAbsError += Math.abs(fcValue - actual);
@@ -1396,11 +1393,8 @@ function findBestMethod() {
           if (fcResults.length < LAG) continue;
 
           const fcValue = fcResults[LAG - 1].statValue;
-          let actual = 0;
-          if (src === 'pos') actual = allActuals[i].posCases || 0;
-          else if (src === 'invoice') actual = allActuals[i].invoiceCases || 0;
-          else if (src === 'order') actual = allActuals[i].orderCases || 0;
-          else actual = ((allActuals[i].posCases||0)*0.33 + (allActuals[i].invoiceCases||0)*0.34 + (allActuals[i].orderCases||0)*0.33);
+          // Accuracy always measured against ORDER_CASES
+          const actual = allActuals[i].orderCases || 0;
           if (actual <= 0) continue;
 
           totalActual += actual;
@@ -1465,7 +1459,7 @@ function disaggregateForecast(filtered, aggregateResults, params) {
     if (src === 'pos') vol = r.posCases || 0;
     else if (src === 'invoice') vol = r.invoiceCases || 0;
     else if (src === 'order') vol = r.orderCases || 0;
-    else vol = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
+    else vol = ((r.posCases||0)*0.5 + (r.orderCases||0)*0.5);
     if (vol <= 0) continue;
 
     const ck = r.customerName + '|' + r.productNumber;
@@ -1579,7 +1573,7 @@ function runBacktest() {
     if (src === 'pos') vol = r.posCases || 0;
     else if (src === 'invoice') vol = r.invoiceCases || 0;
     else if (src === 'order') vol = r.orderCases || 0;
-    else vol = ((r.posCases||0)*0.33 + (r.invoiceCases||0)*0.34 + (r.orderCases||0)*0.33);
+    else vol = ((r.posCases||0)*0.5 + (r.orderCases||0)*0.5);
     if (vol <= 0) continue;
     const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
     prev.posCases += r.posCases || 0;
@@ -1608,13 +1602,8 @@ function runBacktest() {
     // The LAG-th result is our forecast for targetMonth
     const fcValue = fcResults[LAG - 1].statValue;
 
-    // Get actual value
-    let actual = 0;
-    if (src === 'pos') actual = allActuals[i].posCases || 0;
-    else if (src === 'invoice') actual = allActuals[i].invoiceCases || 0;
-    else if (src === 'order') actual = allActuals[i].orderCases || 0;
-    else actual = ((allActuals[i].posCases||0)*0.33 + (allActuals[i].invoiceCases||0)*0.34 + (allActuals[i].orderCases||0)*0.33);
-
+    // Accuracy always measured against ORDER_CASES
+    const actual = allActuals[i].orderCases || 0;
     if (actual <= 0) continue;
 
     const error = fcValue - actual;
