@@ -123,6 +123,10 @@
     .saved-item .saved-months { font-size: 11px; color: #9ca3af; margin-left: 8px; white-space: nowrap; }
     .saved-count { font-size: 11px; color: #6b7280; margin-bottom: 8px; }
     .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
+    .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; font-weight: 500; }
+    .btn-secondary:hover { background: #e5e7eb; }
+    .best-method-result { margin-top: 8px; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 12px; color: #166534; }
+    .variance-pos { color: #dc2626; } .variance-neg { color: #2563eb; } .variance-zero { color: #9ca3af; }
     /* Accuracy metrics */
     .accuracy-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     @media (min-width: 768px) { .accuracy-grid { grid-template-columns: repeat(4, 1fr); } }
@@ -257,7 +261,7 @@
             <div style="height:350px; position:relative;"><canvas id="forecast-chart"></canvas></div>
           </div>
           <!-- Accuracy / Backtesting -->
-          <div id="accuracy-section" class="card mt-6 p-6 hidden">
+          <div id="accuracy-section" class="card mt-4 p-6 hidden">
             <div class="flex justify-between items-center mb-4">
               <h2 class="text-sm font-semibold text-gray-700">Forecast Accuracy — Lag 2 Month Backtest</h2>
               <button class="backtest-toggle" onclick="toggleBacktestDetail()">Show detail</button>
@@ -277,11 +281,11 @@
           </div>
 
           <!-- Data grid -->
-          <div class="card mt-6" style="overflow:hidden">
+          <div class="card mt-4" style="overflow:hidden">
             <div class="grid-container">
               <table class="data-grid">
                 <thead><tr>
-                  <th>Month</th><th class="num">Wks</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Override</th><th class="num">Final</th>
+                  <th>Month</th><th class="num">Wks</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Variance</th><th class="num">Override</th><th class="num">Final</th>
                 </tr></thead>
                 <tbody id="grid-body"></tbody>
               </table>
@@ -336,6 +340,10 @@
             </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
             <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
+            <div style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px;">
+              <button onclick="findBestMethod()" class="w-full py-2 btn-secondary">Find Best Method</button>
+              <div id="best-method-result" class="hidden"></div>
+            </div>
           </div>
 
           <!-- Saved Forecasts Panel -->
@@ -906,6 +914,114 @@ function saveForecast() {
 }
 
 // ============================================================
+// FIND BEST METHOD — backtest all methods, pick lowest WMAPE
+// ============================================================
+function findBestMethod() {
+  showLoading('Backtesting all methods...');
+  requestAnimationFrame(() => {
+    try {
+      const filtered = getFilteredRows();
+      const monthAgg = new Map();
+      for (const r of filtered) {
+        if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+          const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
+          prev.posCases += r.posCases || 0;
+          prev.invoiceCases += r.invoiceCases || 0;
+          prev.orderCases += r.orderCases || 0;
+          monthAgg.set(r.month, prev);
+        }
+      }
+      const allActuals = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
+
+      const baseParams = getConfigParams();
+      const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope'];
+      // Add POS methods only if POS data exists
+      if (state.hasPosData) { methods.push('pos_lag', 'consumption_rate'); }
+
+      const methodLabels = {
+        weighted_ma: 'Weighted Moving Avg',
+        exp_smoothing: 'Exponential Smoothing',
+        linear_avg: 'Linear Average',
+        linear_slope: 'Linear Trend (Slope)',
+        pos_lag: 'POS-to-Shipment Lag',
+        consumption_rate: 'POS Consumption Rate',
+      };
+
+      const LAG = 2;
+      const results = [];
+
+      for (const method of methods) {
+        const params = { ...baseParams, method };
+        const minHistory = Math.max(params.window, 3) + LAG;
+        if (allActuals.length < minHistory) continue;
+
+        let totalActual = 0, totalAbsError = 0, totalError = 0, count = 0;
+        const src = params.source;
+
+        for (let i = minHistory; i < allActuals.length; i++) {
+          const trainingData = allActuals.slice(0, i - LAG);
+          if (trainingData.length < params.window) continue;
+
+          const fcResults = runForecastEngine(trainingData, params, LAG);
+          if (fcResults.length < LAG) continue;
+
+          const fcValue = fcResults[LAG - 1].statValue;
+          let actual = 0;
+          if (src === 'pos') actual = allActuals[i].posCases || 0;
+          else if (src === 'invoice') actual = allActuals[i].invoiceCases || 0;
+          else if (src === 'order') actual = allActuals[i].orderCases || 0;
+          else actual = ((allActuals[i].posCases||0)*0.33 + (allActuals[i].invoiceCases||0)*0.34 + (allActuals[i].orderCases||0)*0.33);
+          if (actual <= 0) continue;
+
+          totalActual += actual;
+          totalAbsError += Math.abs(fcValue - actual);
+          totalError += fcValue - actual;
+          count++;
+        }
+
+        if (count > 0 && totalActual > 0) {
+          const wmape = totalAbsError / totalActual;
+          const bias = totalError / totalActual;
+          results.push({ method, label: methodLabels[method], wmape, bias, accuracy: 1 - wmape, count });
+        }
+      }
+
+      results.sort((a, b) => a.wmape - b.wmape);
+
+      const div = document.getElementById('best-method-result');
+      if (results.length === 0) {
+        div.className = 'best-method-result';
+        div.innerHTML = 'Not enough data to backtest';
+        div.classList.remove('hidden');
+      } else {
+        const best = results[0];
+        let html = '<div class="best-method-result"><strong>Best: ' + best.label + '</strong><br>' +
+          'Accuracy: ' + (best.accuracy * 100).toFixed(1) + '% · Bias: ' + (best.bias > 0 ? '+' : '') + (best.bias * 100).toFixed(1) + '%</div>';
+        if (results.length > 1) {
+          html += '<div style="margin-top:6px; font-size:11px; color:#6b7280;">';
+          for (let i = 1; i < results.length; i++) {
+            html += results[i].label + ': ' + (results[i].accuracy * 100).toFixed(1) + '%<br>';
+          }
+          html += '</div>';
+        }
+        div.innerHTML = html;
+        div.classList.remove('hidden');
+
+        // Auto-select the best method in the dropdown
+        document.getElementById('cfg-method').value = best.method;
+        onConfigChange();
+        showToast('Best method: ' + best.label + ' (' + (best.accuracy * 100).toFixed(1) + '% accuracy)', 'success');
+      }
+
+      hideLoading();
+    } catch (e) {
+      hideLoading();
+      showToast('Error finding best method: ' + e.message, 'error');
+    }
+  });
+}
+
+// ============================================================
 // DISAGGREGATION — allocate aggregate forecast to SKU level
 // ============================================================
 function disaggregateForecast(filtered, aggregateResults, params) {
@@ -1277,6 +1393,15 @@ function renderGrid(rows) {
   for (const r of rows) {
     const tr = document.createElement('tr');
     const wks = state.weeksMap[r.month];
+    // Variance = Stat Forecast - Existing Forecast
+    let varianceHtml = '';
+    if (r.statForecast != null && r.existingForecast != null) {
+      const v = r.statForecast - r.existingForecast;
+      const cls = v > 0 ? 'variance-pos' : v < 0 ? 'variance-neg' : 'variance-zero';
+      varianceHtml = '<td class="num ' + cls + '">' + (v > 0 ? '+' : '') + fmt(v) + '</td>';
+    } else {
+      varianceHtml = '<td class="num"></td>';
+    }
     tr.innerHTML =
       '<td>' + r.month + '</td>' +
       '<td class="num" style="color:#9ca3af">' + (wks != null ? wks : '') + '</td>' +
@@ -1285,6 +1410,7 @@ function renderGrid(rows) {
       '<td class="num">' + fmt(r.orderCases) + '</td>' +
       '<td class="num">' + fmt(r.existingForecast) + '</td>' +
       '<td class="num stat-color">' + fmt(r.statForecast) + '</td>' +
+      varianceHtml +
       (r.isHistorical
         ? '<td class="num"></td>'
         : '<td class="num' + (r.overrideVal != null ? ' override-cell' : '') + '"><input type="number" value="' + (r.overrideVal ?? '') + '" data-month="' + r.month + '"></td>') +
@@ -1347,6 +1473,40 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
   });
 }
 
+// Builds variance report rows: future months where both existing and updated forecast exist
+function buildVarianceRows(exportRows) {
+  return exportRows
+    .filter(r => r['FORECAST'] != null && r['UPDATED FORECAST'] != null)
+    .map(r => {
+      const delta = r['UPDATED FORECAST'] - r['FORECAST'];
+      const pctChange = r['FORECAST'] !== 0 ? delta / r['FORECAST'] : null;
+      return {
+        CUSTOMER_NAME: r.CUSTOMER_NAME,
+        PRODUCTNUMBER: r.PRODUCTNUMBER,
+        PRODUCTNAME: r.PRODUCTNAME,
+        END_OF_MONTH_EPOCH: r.END_OF_MONTH_EPOCH,
+        'EXISTING FORECAST': r['FORECAST'],
+        'UPDATED FORECAST': r['UPDATED FORECAST'],
+        'VARIANCE': Math.round(delta * 100) / 100,
+        'VARIANCE %': pctChange != null ? Math.round(pctChange * 10000) / 100 : null,
+        METHOD: r['METHOD'],
+      };
+    });
+}
+
+function addExportSheets(wb, exportRows) {
+  // Tab 1: All data (mirrors upload format)
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportRows), 'All Data');
+
+  // Tab 2: Future only (rows that have an UPDATED FORECAST)
+  const futureRows = exportRows.filter(r => r['UPDATED FORECAST'] != null);
+  if (futureRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(futureRows), 'Future Forecast');
+
+  // Tab 3: Variance report
+  const varianceRows = buildVarianceRows(exportRows);
+  if (varianceRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(varianceRows), 'Variance Report');
+}
+
 function exportExcel() {
   try {
     showLoading('Generating Excel...');
@@ -1354,7 +1514,7 @@ function exportExcel() {
       try {
         const wb = XLSX.utils.book_new();
         const rows = buildExportRows(state.filters.customer, state.filters.product, state.skuForecasts, state.overrides);
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Forecast');
+        addExportSheets(wb, rows);
         XLSX.writeFile(wb, 'forecast_' + (state.filters.customer||'all') + '_' + (state.filters.product||'all') + '.xlsx');
         hideLoading();
         showToast('Excel exported successfully', 'success');
@@ -1375,12 +1535,8 @@ function exportAllForecasts() {
     requestAnimationFrame(() => {
       try {
         const wb = XLSX.utils.book_new();
-
-        // Single sheet with ALL rows in upload format + UPDATED FORECAST + METHOD
-        // No filter — include every parsed row, with forecasts filled in where they exist
         const allRows = buildExportRows('', '', state.skuForecasts, state.overrides);
-        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(allRows), 'All Forecasts');
-
+        addExportSheets(wb, allRows);
         XLSX.writeFile(wb, 'forecast_all_skus.xlsx');
         hideLoading();
         showToast('Exported all forecasts (' + allRows.length + ' rows)', 'success');
