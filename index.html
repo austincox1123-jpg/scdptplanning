@@ -824,34 +824,44 @@ function linearSlope(actuals, params, horizon) {
 //   alpha (0-1): level smoothing — how fast the level adapts
 //   beta (derived from alpha): trend smoothing
 // Forecast: level + trend * periods_ahead
+// Holt's Damped Trend (Double Exponential Smoothing with dampening)
+// alpha: level smoothing, beta: trend smoothing, phi: trend damping (0.8-0.98)
+// Damping prevents the trend from extrapolating forever — it flattens over time.
 function holtsLinearTrend(actuals, params, horizon) {
   if (actuals.length < 2) return [];
   const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const win = Math.min(params.window, sorted.length);
+  const recent = sorted.slice(-win);
   const alpha = params.alpha || 0.3;
-  const beta = Math.min(alpha * 0.5, 0.3); // trend smoothing, more conservative than level
+  const beta = 0.05;  // very conservative trend smoothing — resist noise
+  const phi = 0.9;    // damping factor — trend decays 10% each period
 
-  // Initialize level as first value, trend as average slope over first N points
-  let level = sorted[0].value;
-  const initN = Math.min(sorted.length, Math.max(6, params.window));
-  let trend = 0;
-  for (let i = 1; i < initN; i++) trend += (sorted[i].value - sorted[i-1].value);
-  trend /= (initN - 1);
+  // Initialize with OLS regression on the lookback window for stable level + trend
+  const n = recent.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+  for (let i = 0; i < n; i++) { sumX += i; sumY += recent[i].value; sumXY += i * recent[i].value; sumX2 += i * i; }
+  const denom = n * sumX2 - sumX * sumX;
+  let trend = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+  let level = (sumY - trend * sumX) / n + trend * (n - 1); // level at last point
 
-  // Smooth through all actuals
-  for (let i = 1; i < sorted.length; i++) {
+  // Smooth through the lookback window to refine
+  for (let i = 0; i < n; i++) {
     const prevLevel = level;
-    level = alpha * sorted[i].value + (1 - alpha) * (prevLevel + trend);
-    trend = beta * (level - prevLevel) + (1 - beta) * trend;
+    level = alpha * recent[i].value + (1 - alpha) * (prevLevel + phi * trend);
+    trend = beta * (level - prevLevel) + (1 - beta) * phi * trend;
   }
 
-  // Apply seasonal adjustment if enabled
+  // Seasonal adjustment
   let seasonal = null;
   if (params.seasonality && sorted.length >= 12) seasonal = calcSeasonalIndices(sorted);
 
   const results = [];
   const lastKey = sorted[sorted.length - 1].month;
   for (let i = 1; i <= horizon; i++) {
-    let fc = level + trend * i;
+    // Damped trend: sum of phi^1 + phi^2 + ... + phi^i
+    let trendSum = 0;
+    for (let j = 1; j <= i; j++) trendSum += Math.pow(phi, j);
+    let fc = level + trend * trendSum;
     if (seasonal) {
       const fk = forecastMonth(lastKey, i);
       const moMatch = fk.match(/^(\d{4})-(\d{2})/);
