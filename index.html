@@ -172,6 +172,7 @@
             <span class="col-tag">INVOICE CASES</span>
             <span class="col-tag">ORDER CASES</span>
             <span class="col-tag">FORECAST</span>
+            <span class="col-tag">MAX_WKS_PER_MONTH</span>
           </div>
           <p class="text-xs text-gray-400 mt-2">* Required columns</p>
         </div>
@@ -280,7 +281,7 @@
             <div class="grid-container">
               <table class="data-grid">
                 <thead><tr>
-                  <th>Month</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Override</th><th class="num">Final</th>
+                  <th>Month</th><th class="num">Wks</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Override</th><th class="num">Final</th>
                 </tr></thead>
                 <tbody id="grid-body"></tbody>
               </table>
@@ -361,6 +362,7 @@ const state = {
   skuForecasts: {},      // key "customer|productNumber" => [{month, statValue}] — disaggregated to SKU level
   overrides: {},
   hasPosData: false,
+  weeksMap: {},          // month string => maxWksPerMonth value from upload
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
 };
 let chart = null;
@@ -389,6 +391,7 @@ const COLUMN_MAP = {
   'FORMATION': 'formation', 'PRODUCTNAME': 'productName', 'PRODUCTNUMBER': 'productNumber',
   'END_OF_MONTH_EPOCH': 'endOfMonthEpoch', 'POS CASES': 'posCases',
   'INVOICE CASES': 'invoiceCases', 'ORDER CASES': 'orderCases', 'FORECAST': 'forecast',
+  'MAX_WKS_PER_MONTH': 'maxWksPerMonth',
 };
 const REQUIRED = ['CUSTOMER_NAME', 'PRODUCTNUMBER', 'END_OF_MONTH_EPOCH'];
 
@@ -435,7 +438,8 @@ function parseFile(buffer) {
       rows.push({ customerName, brand: String(m.brand||'').trim(), type: String(m.type||'').trim(),
         formation: String(m.formation||'').trim(), productName: String(m.productName||'').trim(),
         productNumber, month, posCases: toNum(m.posCases), invoiceCases: toNum(m.invoiceCases),
-        orderCases: toNum(m.orderCases), forecast: toNum(m.forecast) });
+        orderCases: toNum(m.orderCases), forecast: toNum(m.forecast),
+        maxWksPerMonth: toNum(m.maxWksPerMonth) });
     }
     return { success: true, rows, errors, rowCount: rows.length };
   } catch (e) {
@@ -554,24 +558,56 @@ function extractSeries(rows, source) {
 }
 
 function runForecastEngine(actuals, params, horizon) {
-  const series = extractSeries(actuals, params.source);
+  const wm = state.weeksMap;
+  const hasWeeks = Object.keys(wm).length > 0;
+
+  // If we have weeks data, normalize actuals to per-week before forecasting
+  let series = extractSeries(actuals, params.source);
+  if (hasWeeks) {
+    series = series.map(p => {
+      const wks = wm[p.month] || 4;
+      return { month: p.month, value: p.value / wks };
+    });
+  }
+
+  let results;
   switch (params.method) {
-    case 'weighted_ma': return weightedMovingAverage(series, params, horizon);
-    case 'exp_smoothing': return exponentialSmoothing(series, params, horizon);
+    case 'weighted_ma': results = weightedMovingAverage(series, params, horizon); break;
+    case 'exp_smoothing': results = exponentialSmoothing(series, params, horizon); break;
     case 'pos_lag': {
-      const pos = extractSeries(actuals, 'pos');
-      const ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
-      return posToShipmentLag(pos, ship, 2, params.window, horizon);
+      let pos = extractSeries(actuals, 'pos');
+      let ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
+      if (hasWeeks) {
+        pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
+        ship = ship.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
+      }
+      results = posToShipmentLag(pos, ship, 2, params.window, horizon);
+      break;
     }
     case 'consumption_rate': {
-      const pos = extractSeries(actuals, 'pos');
-      const ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
-      return consumptionRate(pos, ship, params.window, horizon);
+      let pos = extractSeries(actuals, 'pos');
+      let ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
+      if (hasWeeks) {
+        pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
+        ship = ship.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
+      }
+      results = consumptionRate(pos, ship, params.window, horizon);
+      break;
     }
-    case 'linear_avg': return linearAverage(series, params, horizon);
-    case 'linear_slope': return linearSlope(series, params, horizon);
-    default: return weightedMovingAverage(series, params, horizon);
+    case 'linear_avg': results = linearAverage(series, params, horizon); break;
+    case 'linear_slope': results = linearSlope(series, params, horizon); break;
+    default: results = weightedMovingAverage(series, params, horizon);
   }
+
+  // Scale forecast back up by weeks per month for each future month
+  if (hasWeeks && results.length) {
+    results = results.map(r => {
+      const wks = wm[r.month] || 4; // default 4 if no weeks data for this future month
+      return { month: r.month, statValue: Math.round(r.statValue * wks * 100) / 100 };
+    });
+  }
+
+  return results;
 }
 
 // Linear Average — calculates avg weekly run rate over the lookback
@@ -669,6 +705,7 @@ function loadData(rows, fileName) {
   state.forecastResults = {};
   state.skuForecasts = {};
   state.overrides = {};
+  state.weeksMap = {};
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
   state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
 
@@ -683,6 +720,14 @@ function loadData(rows, fileName) {
   state.customers = [...custSet.values()].sort((a,b) => a.name.localeCompare(b.name));
   state.products = [...prodSet.values()].sort((a,b) => a.productName.localeCompare(b.productName));
   state.hasPosData = rows.some(r => r.posCases != null && r.posCases > 0);
+
+  // Build weeks-per-month lookup from MAX_WKS_PER_MONTH column
+  state.weeksMap = {};
+  for (const r of rows) {
+    if (r.maxWksPerMonth != null && !state.weeksMap[r.month]) {
+      state.weeksMap[r.month] = r.maxWksPerMonth;
+    }
+  }
 }
 
 // ============================================================
@@ -1193,8 +1238,10 @@ function renderGrid(rows) {
   const frag = document.createDocumentFragment();
   for (const r of rows) {
     const tr = document.createElement('tr');
+    const wks = state.weeksMap[r.month];
     tr.innerHTML =
       '<td>' + r.month + '</td>' +
+      '<td class="num" style="color:#9ca3af">' + (wks != null ? wks : '') + '</td>' +
       '<td class="num">' + fmt(r.posCases) + '</td>' +
       '<td class="num">' + fmt(r.invoiceCases) + '</td>' +
       '<td class="num">' + fmt(r.orderCases) + '</td>' +
@@ -1434,6 +1481,8 @@ function loadDemoData() {
       const custScale = { Petco: 1.0, PetSmart: 1.2, Chewy: 0.8 };
       const rows = [];
       const rand = (base, pct) => Math.round(base * (1 + (Math.random() - 0.5) * 2 * pct) * 100) / 100;
+      // 4-4-5 calendar pattern: repeating quarterly
+      const wksPattern = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5];
 
       for (const cust of customers) {
         for (const prod of products) {
@@ -1444,16 +1493,18 @@ function loadDemoData() {
             const d = new Date(y, m + 1, 0);
             const trend = 1 + mo * 0.005;
             const v = base * trend;
+            const wks = wksPattern[m];
             rows.push({ customerName: cust, ...prod, month: d.toISOString().split('T')[0],
-              posCases: rand(v, 0.15), invoiceCases: rand(v * 1.05, 0.15), orderCases: rand(v * 1.02, 0.15), forecast: null });
+              posCases: rand(v * wks/4, 0.15), invoiceCases: rand(v * 1.05 * wks/4, 0.15), orderCases: rand(v * 1.02 * wks/4, 0.15), forecast: null, maxWksPerMonth: wks });
           }
           for (let mo = 0; mo < 18; mo++) {
             const y = 2026 + Math.floor((2 + mo) / 12);
             const m = (2 + mo) % 12;
             const d = new Date(y, m + 1, 0);
             const trend = 1 + (24 + mo) * 0.005;
+            const wks = wksPattern[m];
             rows.push({ customerName: cust, ...prod, month: d.toISOString().split('T')[0],
-              posCases: null, invoiceCases: null, orderCases: null, forecast: Math.round(base * trend * 100) / 100 });
+              posCases: null, invoiceCases: null, orderCases: null, forecast: Math.round(base * trend * wks/4 * 100) / 100, maxWksPerMonth: wks });
           }
         }
       }
