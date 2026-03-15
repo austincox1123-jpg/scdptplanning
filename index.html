@@ -1266,43 +1266,67 @@ function saveForecast() {
 // BULK FORECAST — run current config on every customer/product combo
 // ============================================================
 // Find best method for a given set of actuals (returns {method, wmape} or null)
+// Backtest a single param combo, returns { wmape, monthErrors[] } or null
+function backtestParams(actualData, params) {
+  const LAG = 2;
+  const minHistory = Math.max(params.window, 3) + LAG;
+  if (actualData.length < minHistory) return null;
+
+  let totalActual = 0, totalAbsError = 0;
+  const monthErrors = [];
+
+  for (let i = minHistory; i < actualData.length; i++) {
+    const trainingData = actualData.slice(0, i - LAG);
+    if (trainingData.length < params.window) continue;
+    const fcResults = runForecastEngine(trainingData, params, LAG);
+    if (fcResults.length < LAG) continue;
+    const fcValue = fcResults[LAG - 1].statValue;
+    const actual = actualData[i].orderCases || 0;
+    if (actual <= 0) continue;
+    const absErr = Math.abs(fcValue - actual);
+    const pctErr = absErr / actual;
+    totalActual += actual;
+    totalAbsError += absErr;
+    monthErrors.push({ month: actualData[i].month, actual, forecast: fcValue, pctErr });
+  }
+
+  if (monthErrors.length === 0 || totalActual <= 0) return null;
+  return { wmape: totalAbsError / totalActual, monthErrors };
+}
+
+// Detect outlier months: >2x median APE
+function detectOutliers(monthErrors) {
+  if (monthErrors.length < 4) return [];
+  const sorted = [...monthErrors].sort((a,b) => a.pctErr - b.pctErr);
+  const median = sorted[Math.floor(sorted.length / 2)].pctErr;
+  const threshold = Math.max(median * 2, 0.3); // at least 30% error to be an outlier
+  return monthErrors.filter(m => m.pctErr > threshold).map(m => m.month);
+}
+
 function findBestMethodForData(actualData, baseParams) {
   const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope', 'holts'];
   const hasPOS = actualData.some(r => (r.posCases || 0) > 0);
   if (hasPOS) methods.push('pos_lag', 'consumption_rate');
 
-  const LAG = 2;
-  let bestMethod = baseParams.method;
-  let bestWmape = Infinity;
+  const windows = [3, 6, 9, 12, 18, 24];
+  const alphas = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9];
+  const needsAlpha = new Set(['exp_smoothing', 'holts']);
+
+  let best = { method: baseParams.method, window: baseParams.window, alpha: baseParams.alpha || 0.3, wmape: Infinity, monthErrors: [] };
 
   for (const method of methods) {
-    const params = { ...baseParams, method };
-    const minHistory = Math.max(params.window, 3) + LAG;
-    if (actualData.length < minHistory) continue;
-
-    let totalActual = 0, totalAbsError = 0, count = 0;
-    const src = params.source;
-
-    for (let i = minHistory; i < actualData.length; i++) {
-      const trainingData = actualData.slice(0, i - LAG);
-      if (trainingData.length < params.window) continue;
-      const fcResults = runForecastEngine(trainingData, params, LAG);
-      if (fcResults.length < LAG) continue;
-      const fcValue = fcResults[LAG - 1].statValue;
-      // Accuracy always measured against ORDER_CASES regardless of forecast source
-      const actual = actualData[i].orderCases || 0;
-      if (actual <= 0) continue;
-      totalActual += actual;
-      totalAbsError += Math.abs(fcValue - actual);
-      count++;
-    }
-
-    if (count > 0 && totalActual > 0) {
-      const wmape = totalAbsError / totalActual;
-      if (wmape < bestWmape) { bestWmape = wmape; bestMethod = method; }
+    const alphaList = needsAlpha.has(method) ? alphas : [0.3];
+    for (const win of windows) {
+      for (const alpha of alphaList) {
+        const params = { ...baseParams, method, window: win, alpha };
+        const result = backtestParams(actualData, params);
+        if (result && result.wmape < best.wmape) {
+          best = { method, window: win, alpha, wmape: result.wmape, monthErrors: result.monthErrors };
+        }
+      }
     }
   }
-  return { method: bestMethod, wmape: bestWmape };
+  return best;
 }
 
 function bulkForecast() {
@@ -1334,9 +1358,9 @@ function bulkForecast() {
         const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
         if (actualData.length < baseParams.window) { skipped++; continue; }
 
-        // Find best method for this specific SKU
+        // Find best method, window, and alpha for this specific SKU
         const best = findBestMethodForData(actualData, baseParams);
-        const params = { ...baseParams, method: best.method };
+        const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
 
         const results = runForecastEngine(actualData, params, 18);
         if (!results.length) { skipped++; continue; }
@@ -1366,13 +1390,14 @@ function bulkForecast() {
 // FIND BEST METHOD — backtest all methods, pick lowest WMAPE
 // ============================================================
 function findBestMethod() {
-  showLoading('Backtesting all methods...');
+  showLoading('Optimizing method, window & alpha...');
   requestAnimationFrame(() => {
     try {
       const filtered = getFilteredRows();
       const monthAgg = new Map();
       for (const r of filtered) {
         if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+          if (state.excludedMonths.has(r.month)) continue;
           const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
           prev.posCases += r.posCases || 0;
           prev.invoiceCases += r.invoiceCases || 0;
@@ -1383,8 +1408,7 @@ function findBestMethod() {
       const allActuals = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
 
       const baseParams = getConfigParams();
-      const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope', 'holts'];
-      if (state.hasPosData) { methods.push('pos_lag', 'consumption_rate'); }
+      const best = findBestMethodForData(allActuals, baseParams);
 
       const methodLabels = {
         weighted_ma: 'Weighted Moving Avg',
@@ -1396,67 +1420,43 @@ function findBestMethod() {
         consumption_rate: 'POS Consumption Rate',
       };
 
-      const LAG = 2;
-      const results = [];
-
-      for (const method of methods) {
-        const params = { ...baseParams, method };
-        const minHistory = Math.max(params.window, 3) + LAG;
-        if (allActuals.length < minHistory) continue;
-
-        let totalActual = 0, totalAbsError = 0, totalError = 0, count = 0;
-        const src = params.source;
-
-        for (let i = minHistory; i < allActuals.length; i++) {
-          const trainingData = allActuals.slice(0, i - LAG);
-          if (trainingData.length < params.window) continue;
-
-          const fcResults = runForecastEngine(trainingData, params, LAG);
-          if (fcResults.length < LAG) continue;
-
-          const fcValue = fcResults[LAG - 1].statValue;
-          // Accuracy always measured against ORDER_CASES
-          const actual = allActuals[i].orderCases || 0;
-          if (actual <= 0) continue;
-
-          totalActual += actual;
-          totalAbsError += Math.abs(fcValue - actual);
-          totalError += fcValue - actual;
-          count++;
-        }
-
-        if (count > 0 && totalActual > 0) {
-          const wmape = totalAbsError / totalActual;
-          const bias = totalError / totalActual;
-          results.push({ method, label: methodLabels[method], wmape, bias, accuracy: 1 - wmape, count });
-        }
-      }
-
-      results.sort((a, b) => a.wmape - b.wmape);
-
       const div = document.getElementById('best-method-result');
-      if (results.length === 0) {
-        div.className = 'best-method-result';
-        div.innerHTML = 'Not enough data to backtest';
+      if (best.wmape === Infinity) {
+        div.innerHTML = '<div class="best-method-result">Not enough data to backtest</div>';
         div.classList.remove('hidden');
       } else {
-        const best = results[0];
-        let html = '<div class="best-method-result"><strong>Best: ' + best.label + '</strong><br>' +
-          'Accuracy: ' + (best.accuracy * 100).toFixed(1) + '% · Bias: ' + (best.bias > 0 ? '+' : '') + (best.bias * 100).toFixed(1) + '%</div>';
-        if (results.length > 1) {
-          html += '<div style="margin-top:6px; font-size:11px; color:#6b7280;">';
-          for (let i = 1; i < results.length; i++) {
-            html += results[i].label + ': ' + (results[i].accuracy * 100).toFixed(1) + '%<br>';
-          }
-          html += '</div>';
+        const acc = ((1 - best.wmape) * 100).toFixed(1);
+        const label = methodLabels[best.method] || best.method;
+        const needsAlpha = best.method === 'exp_smoothing' || best.method === 'holts';
+
+        let html = '<div class="best-method-result">' +
+          '<strong>' + label + '</strong><br>' +
+          'Accuracy: ' + acc + '%<br>' +
+          'Window: ' + best.window + ' mo' +
+          (needsAlpha ? ' · Alpha: ' + best.alpha.toFixed(1) : '') +
+          '</div>';
+
+        // Outlier detection
+        const outliers = detectOutliers(best.monthErrors);
+        if (outliers.length > 0) {
+          html += '<div style="margin-top:6px; padding:6px 8px; background:#fef2f2; border:1px solid #fecaca; border-radius:4px; font-size:11px; color:#b91c1c;">' +
+            '<strong>Outlier months</strong> (consider excluding):<br>' +
+            outliers.map(m => sanitize(fmtTimeKey(m))).join(', ') + '</div>';
         }
+
         div.innerHTML = html;
         div.classList.remove('hidden');
 
-        // Auto-select the best method in the dropdown
+        // Auto-select best config in the UI
         document.getElementById('cfg-method').value = best.method;
+        document.getElementById('cfg-window').value = best.window;
+        document.getElementById('window-val').textContent = best.window;
+        if (needsAlpha) {
+          document.getElementById('cfg-alpha').value = best.alpha;
+          document.getElementById('alpha-val').textContent = best.alpha.toFixed(1);
+        }
         onConfigChange();
-        showToast('Best method: ' + best.label + ' (' + (best.accuracy * 100).toFixed(1) + '% accuracy)', 'success');
+        showToast('Best: ' + label + ' · Window ' + best.window + (needsAlpha ? ' · Alpha ' + best.alpha.toFixed(1) : '') + ' (' + acc + '%)', 'success');
       }
 
       hideLoading();
