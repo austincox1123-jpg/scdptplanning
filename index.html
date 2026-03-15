@@ -134,6 +134,10 @@
     .view-toggle button.active { background: #2563eb; color: #fff; }
     /* Expandable grid rows */
     .expand-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0 4px; color: #6b7280; }
+    /* Month exclusion */
+    .exclude-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+    .exclude-chip { padding: 3px 8px; font-size: 11px; border: 1px solid #d1d5db; border-radius: 4px; cursor: pointer; background: #fff; color: #374151; user-select: none; }
+    .exclude-chip.excluded { background: #fef2f2; border-color: #fca5a5; color: #b91c1c; text-decoration: line-through; }
     /* Weeks editor */
     .weeks-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
     .weeks-grid .wk-cell { display: flex; align-items: center; gap: 4px; font-size: 11px; }
@@ -366,6 +370,10 @@
               <input type="checkbox" id="cfg-seasonality">
               <label for="cfg-seasonality" class="text-xs text-gray-600">Apply seasonal indices</label>
             </div>
+            <div>
+              <label class="label">Exclude Months <span style="font-weight:400; color:#9ca3af">(click to toggle)</span></label>
+              <div class="exclude-grid" id="exclude-months"></div>
+            </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
             <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
             <button onclick="bulkForecast()" class="w-full py-2 btn-secondary" style="margin-top:4px">Forecast All SKUs</button>
@@ -413,6 +421,7 @@ const state = {
   previewParams: null,   // config params used for the preview
   overrides: {},
   hasPosData: false,
+  excludedMonths: new Set(),  // set of "YYYY-MM-15" month keys to exclude from forecast
   isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
   weeksMap: {},          // month string => maxWksPerMonth value from upload
@@ -441,14 +450,12 @@ function dateStr(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padS
 
 // Generate a forecast period key, i periods after lastDate
 // Monthly: i months forward. Weekly: i weeks forward (generates YYYY-MM-WN keys).
-function forecastMonth(lastDate, i) {
-  if (!state.isWeekly) {
-    const d = new Date(lastDate.getFullYear(), lastDate.getMonth() + i, 15);
-    return dateStr(d);
-  }
-  // Weekly: lastDate.month is like "2026-02-W4". Parse it and step forward i weeks.
-  const lastKey = typeof lastDate === 'string' ? lastDate : (lastDate.month || dateStr(lastDate));
-  const wMatch = lastKey.match(/^(\d{4})-(\d{2})-W(\d)$/);
+function forecastMonth(lastKey, i) {
+  // lastKey is always a string: "YYYY-MM-15" (monthly) or "YYYY-MM-WN" (weekly)
+  const key = typeof lastKey === 'string' ? lastKey : dateStr(lastKey);
+
+  // Weekly key
+  const wMatch = key.match(/^(\d{4})-(\d{2})-W(\d)$/);
   if (wMatch) {
     let yr = parseInt(wMatch[1]), mo = parseInt(wMatch[2]), wk = parseInt(wMatch[3]);
     for (let s = 0; s < i; s++) {
@@ -458,9 +465,20 @@ function forecastMonth(lastDate, i) {
     }
     return yr + '-' + String(mo).padStart(2,'0') + '-W' + wk;
   }
-  // Fallback: monthly
-  const d = new Date(lastDate.getFullYear ? lastDate.getFullYear() : 2026, lastDate.getMonth ? lastDate.getMonth() + i : i, 15);
-  return dateStr(d);
+
+  // Monthly key — parse year and month from string
+  const mMatch = key.match(/^(\d{4})-(\d{2})/);
+  if (mMatch) {
+    let yr = parseInt(mMatch[1]), mo = parseInt(mMatch[2]) - 1; // 0-indexed
+    mo += i;
+    yr += Math.floor(mo / 12);
+    mo = mo % 12;
+    if (mo < 0) { mo += 12; yr--; }
+    return yr + '-' + String(mo + 1).padStart(2, '0') + '-15';
+  }
+
+  // Absolute fallback
+  return key;
 }
 
 // ============================================================
@@ -863,6 +881,7 @@ function showDashboard() {
   // Show week/month toggle only for weekly data
   document.getElementById('view-toggle-container').classList.toggle('hidden', !state.isWeekly);
   renderWeeksEditor();
+  renderExcludeMonths();
   invalidateCache();
   renderDashboard();
   renderSavedPanel();
@@ -880,6 +899,7 @@ function loadData(rows, fileName) {
   state.previewFiltered = null;
   state.previewParams = null;
   state.overrides = {};
+  state.excludedMonths = new Set();
   state.weeksMap = {};
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
   state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
@@ -962,6 +982,38 @@ function renderWeeksEditor() {
       e.target.parentElement.classList.toggle('wk-five', val === 5);
       buildWeeksMap();
       invalidateCache();
+    }
+  };
+}
+
+// ============================================================
+// MONTH EXCLUSION
+// ============================================================
+function renderExcludeMonths() {
+  const filtered = getFilteredRows();
+  // Get unique historical months
+  const months = [...new Set(filtered.filter(r =>
+    (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0
+  ).map(r => r.month))].sort();
+
+  const container = document.getElementById('exclude-months');
+  container.innerHTML = months.map(m => {
+    const isExcluded = state.excludedMonths.has(m);
+    const moMatch = m.match(/^(\d{4})-(\d{2})/);
+    const label = moMatch ? fmtTimeKey(m) : m;
+    return '<span class="exclude-chip' + (isExcluded ? ' excluded' : '') + '" data-month="' + sanitize(m) + '">' + sanitize(label) + '</span>';
+  }).join('');
+
+  container.onclick = function(e) {
+    const chip = e.target.closest('.exclude-chip');
+    if (!chip) return;
+    const m = chip.dataset.month;
+    if (state.excludedMonths.has(m)) {
+      state.excludedMonths.delete(m);
+      chip.classList.remove('excluded');
+    } else {
+      state.excludedMonths.add(m);
+      chip.classList.add('excluded');
     }
   };
 }
@@ -1077,6 +1129,7 @@ function onFilterChange() {
 
   // Re-cascade: downstream filters may need to update
   updateCascadingFilters();
+  renderExcludeMonths();
 
   document.getElementById('save-forecast-btn').classList.add('hidden');
   invalidateCache();
@@ -1122,7 +1175,9 @@ function runForecast() {
         const agg = new Map();
         for (const r of filtered) {
           if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
-            const tk = timeKey(r); // weekly key if weekly data, monthly key otherwise
+            // Skip excluded months
+            if (state.excludedMonths.has(r.month)) continue;
+            const tk = timeKey(r);
             const prev = agg.get(tk) || { month: tk, posCases: 0, invoiceCases: 0, orderCases: 0 };
             prev.posCases += r.posCases || 0;
             prev.invoiceCases += r.invoiceCases || 0;
@@ -1516,9 +1571,10 @@ function runBacktest() {
   const params = getConfigParams();
   const src = params.source;
 
-  // Aggregate actuals by month
+  // Aggregate actuals by month (respecting exclusions)
   const monthAgg = new Map();
   for (const r of filtered) {
+    if (state.excludedMonths.has(r.month)) continue;
     let vol = 0;
     if (src === 'pos') vol = r.posCases || 0;
     else if (src === 'invoice') vol = r.invoiceCases || 0;
