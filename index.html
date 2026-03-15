@@ -134,6 +134,13 @@
     .view-toggle button.active { background: #2563eb; color: #fff; }
     /* Expandable grid rows */
     .expand-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0 4px; color: #6b7280; }
+    /* Weeks editor */
+    .weeks-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+    .weeks-grid .wk-cell { display: flex; align-items: center; gap: 4px; font-size: 11px; }
+    .weeks-grid .wk-cell label { color: #6b7280; min-width: 28px; }
+    .weeks-grid .wk-cell input { width: 36px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; font-family: inherit; }
+    .weeks-grid .wk-cell input:focus { outline: none; border-color: #2563eb; }
+    .wk-cell.wk-five input { background: #fef3c7; }
     .week-row td { background: #f9fafb; font-size: 12px; color: #6b7280; }
     .week-row td:first-child { padding-left: 28px; }
     /* Accuracy metrics */
@@ -186,7 +193,6 @@
             <span class="col-tag">INVOICE_CASES</span>
             <span class="col-tag">ORDER_CASES</span>
             <span class="col-tag">FORECAST</span>
-            <span class="col-tag">MAX_WKS_PER_MONTH</span>
             <span class="col-tag">WEEK_NUMBER_OF_MONTH</span>
           </div>
           <p class="text-xs text-gray-400 mt-2">* Required columns</p>
@@ -374,6 +380,16 @@
             <h2 class="text-sm font-semibold text-gray-700 mb-2">Saved Forecasts</h2>
             <p class="saved-count" id="saved-count">No forecasts saved yet</p>
             <div id="saved-list"></div>
+          </div>
+
+          <!-- Weeks per Month Editor -->
+          <div class="card p-4" style="margin-top:16px">
+            <div class="flex justify-between items-center mb-2">
+              <h2 class="text-sm font-semibold text-gray-700">Weeks per Month</h2>
+              <button onclick="resetWeeksToDefault()" style="background:none; font-size:11px; color:#6b7280; text-decoration:underline; border:none; cursor:pointer;">Reset to 4-4-5</button>
+            </div>
+            <p class="text-xs text-gray-400 mb-3">Adjust for holidays, closures, or custom fiscal calendars</p>
+            <div class="weeks-grid" id="weeks-editor"></div>
           </div>
         </div>
       </div>
@@ -846,6 +862,7 @@ function showDashboard() {
   populateFilters();
   // Show week/month toggle only for weekly data
   document.getElementById('view-toggle-container').classList.toggle('hidden', !state.isWeekly);
+  renderWeeksEditor();
   invalidateCache();
   renderDashboard();
   renderSavedPanel();
@@ -882,13 +899,79 @@ function loadData(rows, fileName) {
   state.viewMode = 'month';
 
 
-  // Build weeks-per-month lookup from MAX_WKS_PER_MONTH column
-  state.weeksMap = {};
+  // Initialize weeks-per-month from upload data or default 4-4-5
+  state.weeksPerMonthConfig = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5]; // index 0=Jan
+  // If upload has MAX_WKS_PER_MONTH, use those to seed the config
   for (const r of rows) {
-    if (r.maxWksPerMonth != null && !state.weeksMap[r.month]) {
-      state.weeksMap[r.month] = r.maxWksPerMonth;
+    if (r.maxWksPerMonth != null) {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (moMatch) {
+        const mi = parseInt(moMatch[2]) - 1;
+        state.weeksPerMonthConfig[mi] = r.maxWksPerMonth;
+      }
     }
   }
+  buildWeeksMap();
+}
+
+// Build the weeksMap for all months in the data from the config array
+function buildWeeksMap() {
+  state.weeksMap = {};
+  // Get all unique months from parsed data
+  const allMonths = new Set(state.parsedRows.map(r => r.month));
+  // Also add future forecast months (18 months out from last actual)
+  const months = [...allMonths].sort();
+  if (months.length) {
+    const lastMatch = months[months.length - 1].match(/^(\d{4})-(\d{2})/);
+    if (lastMatch) {
+      let yr = parseInt(lastMatch[1]), mo = parseInt(lastMatch[2]);
+      for (let i = 0; i < 24; i++) {
+        mo++;
+        if (mo > 12) { mo = 1; yr++; }
+        allMonths.add(yr + '-' + String(mo).padStart(2,'0') + '-15');
+      }
+    }
+  }
+  for (const m of allMonths) {
+    const moMatch = m.match(/^(\d{4})-(\d{2})/);
+    if (moMatch) {
+      const mi = parseInt(moMatch[2]) - 1;
+      state.weeksMap[m] = state.weeksPerMonthConfig[mi];
+    }
+  }
+}
+
+function renderWeeksEditor() {
+  const ed = document.getElementById('weeks-editor');
+  const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  ed.innerHTML = state.weeksPerMonthConfig.map((wks, i) => {
+    const isFive = wks === 5;
+    return '<div class="wk-cell' + (isFive ? ' wk-five' : '') + '">' +
+      '<label>' + labels[i] + '</label>' +
+      '<input type="number" min="3" max="6" value="' + wks + '" data-month-idx="' + i + '">' +
+      '</div>';
+  }).join('');
+
+  ed.onchange = function(e) {
+    if (e.target.dataset.monthIdx != null) {
+      const idx = parseInt(e.target.dataset.monthIdx);
+      const val = Math.max(3, Math.min(6, parseInt(e.target.value) || 4));
+      e.target.value = val;
+      state.weeksPerMonthConfig[idx] = val;
+      // Highlight 5-week months
+      e.target.parentElement.classList.toggle('wk-five', val === 5);
+      buildWeeksMap();
+      invalidateCache();
+    }
+  };
+}
+
+function resetWeeksToDefault() {
+  state.weeksPerMonthConfig = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5];
+  buildWeeksMap();
+  renderWeeksEditor();
+  invalidateCache();
+  showToast('Weeks reset to 4-4-5 default', 'success');
 }
 
 // ============================================================
@@ -1942,7 +2025,9 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
         'ORDER_CASES': r._hasActuals ? r.orderCases : null,
         FORECAST: r._hasFcst ? r.forecast : null,
       };
-      if (r.maxWksPerMonth != null) row['MAX_WKS_PER_MONTH'] = r.maxWksPerMonth;
+      // Weeks per month from config (not upload)
+    const moParts = r.month ? r.month.match(/^(\d{4})-(\d{2})/) : null;
+    if (moParts) row['MAX_WKS_PER_MONTH'] = state.weeksPerMonthConfig[parseInt(moParts[2]) - 1];
       row['UPDATED FORECAST'] = updatedForecast;
       row['METHOD'] = updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null;
       return row;
@@ -1965,7 +2050,9 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       'POS_CASES': r.posCases, 'INVOICE_CASES': r.invoiceCases,
       'ORDER_CASES': r.orderCases, FORECAST: r.forecast,
     };
-    if (r.maxWksPerMonth != null) row['MAX_WKS_PER_MONTH'] = r.maxWksPerMonth;
+    // Weeks per month from config (not upload)
+    const moParts = r.month ? r.month.match(/^(\d{4})-(\d{2})/) : null;
+    if (moParts) row['MAX_WKS_PER_MONTH'] = state.weeksPerMonthConfig[parseInt(moParts[2]) - 1];
     row['UPDATED FORECAST'] = updatedForecast;
     row['METHOD'] = updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null;
     return row;
