@@ -1470,7 +1470,10 @@ function findBestMethod() {
         hideLoading();
         runForecast();
         showToast('Best: ' + label + ' · Window ' + best.window + (needsAlpha ? ' · Alpha ' + best.alpha.toFixed(1) : '') + ' (' + acc + '%)', 'success');
-        return; // runForecast handles hideLoading
+        return;
+      }
+
+      hideLoading();
     } catch (e) {
       hideLoading();
       showToast('Error finding best method: ' + e.message, 'error');
