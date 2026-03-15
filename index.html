@@ -340,6 +340,7 @@
             </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
             <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
+            <button onclick="bulkForecast()" class="w-full py-2 btn-secondary" style="margin-top:4px">Forecast All SKUs</button>
             <div style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px;">
               <button onclick="findBestMethod()" class="w-full py-2 btn-secondary">Find Best Method</button>
               <div id="best-method-result" class="hidden"></div>
@@ -911,6 +912,59 @@ function saveForecast() {
 
   renderSavedPanel();
   showToast('Forecast saved for ' + (state.filters.customer || 'all filters'), 'success');
+}
+
+// ============================================================
+// BULK FORECAST — run current config on every customer/product combo
+// ============================================================
+function bulkForecast() {
+  showLoading('Forecasting all SKUs...');
+  requestAnimationFrame(() => {
+    try {
+      const params = getConfigParams();
+      // Find every unique customer/product combo with actual data
+      const combos = new Map();
+      for (const r of state.parsedRows) {
+        if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+          const key = r.customerName + '|' + r.productNumber;
+          if (!combos.has(key)) combos.set(key, []);
+          combos.get(key).push(r);
+        }
+      }
+
+      let saved = 0, skipped = 0;
+      for (const [key, rows] of combos) {
+        // Aggregate by month for this combo
+        const monthAgg = new Map();
+        for (const r of rows) {
+          const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
+          prev.posCases += r.posCases || 0;
+          prev.invoiceCases += r.invoiceCases || 0;
+          prev.orderCases += r.orderCases || 0;
+          monthAgg.set(r.month, prev);
+        }
+        const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
+        if (actualData.length < params.window) { skipped++; continue; }
+
+        const results = runForecastEngine(actualData, params, 18);
+        if (!results.length) { skipped++; continue; }
+
+        state.skuForecasts[key] = results;
+        // Also put into forecastResults so the dashboard can show it
+        state.forecastResults[key] = results;
+        saved++;
+      }
+
+      invalidateCache();
+      renderDashboard();
+      renderSavedPanel();
+      hideLoading();
+      showToast('Forecasted ' + saved + ' SKUs' + (skipped ? ' (' + skipped + ' skipped — not enough data)' : ''), 'success');
+    } catch (e) {
+      hideLoading();
+      showToast('Bulk forecast error: ' + e.message, 'error');
+    }
+  });
 }
 
 // ============================================================
