@@ -374,6 +374,17 @@
               <label class="label">Exclude Months <span style="font-weight:400; color:#9ca3af">(click to toggle)</span></label>
               <div class="exclude-grid" id="exclude-months"></div>
             </div>
+            <div>
+              <div class="flex justify-between items-center">
+                <label class="label" style="margin-bottom:0">MOQ Rounding</label>
+                <button onclick="detectMOQ()" style="background:none; font-size:11px; color:#2563eb; text-decoration:underline; border:none; cursor:pointer;">Auto-detect</button>
+              </div>
+              <div class="flex gap-1 mt-1" style="align-items:center">
+                <input type="number" id="cfg-moq" min="1" value="" placeholder="None" style="width:60px; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; text-align:right; font-family:inherit;">
+                <span class="text-xs text-gray-400">cases (blank = off)</span>
+              </div>
+              <p id="moq-hint" class="text-xs text-gray-400 mt-1" style="display:none"></p>
+            </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
             <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
             <button onclick="bulkForecast()" class="w-full py-2 btn-secondary" style="margin-top:4px">Forecast All SKUs</button>
@@ -737,6 +748,14 @@ function runForecastEngine(actuals, params, horizon) {
     });
   }
 
+  // Apply MOQ rounding if set
+  if (params.moq && params.moq > 1 && results.length) {
+    results = results.map(r => ({
+      month: r.month,
+      statValue: Math.round(r.statValue / params.moq) * params.moq
+    }));
+  }
+
   return results;
 }
 
@@ -1050,6 +1069,64 @@ function renderExcludeMonths() {
   };
 }
 
+// ============================================================
+// MOQ DETECTION
+// ============================================================
+function detectMOQ() {
+  const filtered = getFilteredRows();
+  // Get all non-zero order values
+  const orders = filtered.map(r => r.orderCases).filter(v => v != null && v > 0);
+  if (orders.length < 3) {
+    showToast('Not enough order data to detect MOQ', 'error');
+    return;
+  }
+
+  // Round to integers for GCD calculation
+  const intOrders = orders.map(v => Math.round(v));
+
+  // GCD of two numbers
+  function gcd(a, b) { a = Math.abs(a); b = Math.abs(b); while (b) { [a, b] = [b, a % b]; } return a; }
+
+  // GCD across all values
+  let g = intOrders[0];
+  for (let i = 1; i < intOrders.length; i++) { g = gcd(g, intOrders[i]); if (g === 1) break; }
+
+  // If GCD is meaningful (>1), use it
+  if (g > 1) {
+    document.getElementById('cfg-moq').value = g;
+    const pct = (intOrders.filter(v => v % g === 0).length / intOrders.length * 100).toFixed(0);
+    document.getElementById('moq-hint').textContent = 'Detected MOQ: ' + g + ' (' + pct + '% of orders are exact multiples)';
+    document.getElementById('moq-hint').style.display = '';
+    showToast('Detected MOQ: ' + g, 'success');
+    return;
+  }
+
+  // GCD is 1 — try common MOQ candidates and find which has highest match rate
+  const candidates = [4, 5, 6, 8, 10, 12, 15, 16, 20, 24, 25, 30, 36, 48];
+  let bestMoq = null, bestRate = 0;
+  for (const moq of candidates) {
+    // Count how many orders are within 10% of a multiple
+    const matches = intOrders.filter(v => {
+      const remainder = v % moq;
+      return remainder === 0 || remainder <= moq * 0.1 || remainder >= moq * 0.9;
+    }).length;
+    const rate = matches / intOrders.length;
+    if (rate > bestRate && rate >= 0.5) { bestRate = rate; bestMoq = moq; }
+  }
+
+  if (bestMoq) {
+    document.getElementById('cfg-moq').value = bestMoq;
+    document.getElementById('moq-hint').textContent = 'Likely MOQ: ' + bestMoq + ' (' + (bestRate * 100).toFixed(0) + '% of orders align within 10%)';
+    document.getElementById('moq-hint').style.display = '';
+    showToast('Likely MOQ: ' + bestMoq + ' (' + (bestRate * 100).toFixed(0) + '% match)', 'success');
+  } else {
+    document.getElementById('cfg-moq').value = '';
+    document.getElementById('moq-hint').textContent = 'No clear MOQ pattern detected in order history';
+    document.getElementById('moq-hint').style.display = '';
+    showToast('No clear MOQ pattern found', 'error');
+  }
+}
+
 function resetWeeksToDefault() {
   state.weeksPerMonthConfig = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5];
   buildWeeksMap();
@@ -1185,6 +1262,7 @@ function onConfigChange() {
 }
 
 function getConfigParams() {
+  const moqVal = document.getElementById('cfg-moq').value;
   return {
     method: document.getElementById('cfg-method').value,
     source: document.getElementById('cfg-source').value,
@@ -1192,6 +1270,7 @@ function getConfigParams() {
     weightProfile: document.getElementById('cfg-weights').value,
     alpha: parseFloat(document.getElementById('cfg-alpha').value),
     seasonality: document.getElementById('cfg-seasonality').checked,
+    moq: (moqVal && parseInt(moqVal) > 1) ? parseInt(moqVal) : null,
   };
 }
 
