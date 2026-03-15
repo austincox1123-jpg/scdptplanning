@@ -2015,7 +2015,29 @@ function renderGrid(rows) {
   // Attach override listeners via delegation
   tbody.onchange = function(e) {
     if (e.target.tagName === 'INPUT' && e.target.dataset.month) {
-      setOverride(e.target.dataset.month, e.target.value === '' ? null : e.target.value);
+      const inputEl = e.target;
+      const monthKey = inputEl.dataset.month;
+      const val = inputEl.value === '' ? null : inputEl.value;
+
+      // Track expanded rows before re-render
+      const expandedMonths = new Set();
+      tbody.querySelectorAll('.expand-btn').forEach(btn => {
+        if (btn.innerHTML === '\u25BC') expandedMonths.add(btn.dataset.expand);
+      });
+
+      setOverride(monthKey, val);
+
+      // Re-expand rows that were open and refocus the input
+      expandedMonths.forEach(m => {
+        const btn = tbody.querySelector('.expand-btn[data-expand="' + m + '"]');
+        if (btn) {
+          btn.innerHTML = '\u25BC';
+          tbody.querySelectorAll('tr.week-row[data-parent="' + m + '"]').forEach(r => r.classList.remove('hidden'));
+        }
+      });
+      // Refocus the same input
+      const nextInput = tbody.querySelector('input[data-month="' + monthKey + '"]');
+      if (nextInput) nextInput.focus();
     }
   };
 
@@ -2025,8 +2047,8 @@ function renderGrid(rows) {
     if (!btn) return;
     const monthKey = btn.dataset.expand;
     const weekRows = tbody.querySelectorAll('tr.week-row[data-parent="' + monthKey + '"]');
-    const isExpanded = btn.innerHTML === '&#9660;';
-    btn.innerHTML = isExpanded ? '&#9654;' : '&#9660;';
+    const isExpanded = btn.innerHTML === '\u25BC';
+    btn.innerHTML = isExpanded ? '\u25B6' : '\u25BC';
     weekRows.forEach(r => r.classList.toggle('hidden'));
   };
 }
