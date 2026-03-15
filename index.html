@@ -776,7 +776,7 @@ function holtsLinearTrend(actuals, params, horizon) {
 
   // Initialize level as first value, trend as average slope over first N points
   let level = sorted[0].value;
-  const initN = Math.min(sorted.length, Math.max(6, win));
+  const initN = Math.min(sorted.length, Math.max(6, params.window));
   let trend = 0;
   for (let i = 1; i < initN; i++) trend += (sorted[i].value - sorted[i-1].value);
   trend /= (initN - 1);
@@ -926,20 +926,24 @@ function getFilteredRows() {
 // ============================================================
 // FILTERS
 // ============================================================
-function populateFilters() {
-  const setOpts = (id, items, labelFn, valFn, allLabel) => {
-    const el = document.getElementById(id);
-    el.innerHTML = '<option value="">' + allLabel + '</option>' + items.map(i => '<option value="' + sanitize(valFn(i)) + '">' + sanitize(labelFn(i)) + '</option>').join('');
-  };
-  setOpts('filter-customer', state.customers, c=>c.name, c=>c.name, 'All Customers');
-  const brands = [...new Set(state.products.map(p=>p.brand).filter(Boolean))].sort();
-  setOpts('filter-brand', brands, b=>b, b=>b, 'All Brands');
-  const types = [...new Set(state.products.map(p=>p.type).filter(Boolean))].sort();
-  setOpts('filter-type', types, t=>t, t=>t, 'All Types');
-  const formations = [...new Set(state.products.map(p=>p.formation).filter(Boolean))].sort();
-  setOpts('filter-formation', formations, f=>f, f=>f, 'All Formations');
-  setOpts('filter-product', state.products, p=>p.productName, p=>p.productNumber, 'All Products');
+function setSelectOpts(id, items, labelFn, valFn, allLabel, currentVal) {
+  const el = document.getElementById(id);
+  const html = '<option value="">' + allLabel + '</option>' + items.map(i => {
+    const v = sanitize(valFn(i));
+    const sel = v === currentVal ? ' selected' : '';
+    return '<option value="' + v + '"' + sel + '>' + sanitize(labelFn(i)) + '</option>';
+  }).join('');
+  el.innerHTML = html;
+  // If current value no longer in options, reset it
+  if (currentVal && !items.some(i => valFn(i) === currentVal)) {
+    el.value = '';
+    return '';
+  }
+  return currentVal;
+}
 
+function populateFilters() {
+  updateCascadingFilters();
   const posLag = document.querySelector('#cfg-method option[value="pos_lag"]');
   const conRate = document.querySelector('#cfg-method option[value="consumption_rate"]');
   const posSrc = document.querySelector('#cfg-source option[value="pos"]');
@@ -948,13 +952,49 @@ function populateFilters() {
   if (posSrc) posSrc.disabled = !state.hasPosData;
 }
 
+// Cascade: customer → brand → type → formation → product
+// Each filter narrows the available options for the filters below it
+function updateCascadingFilters() {
+  const f = state.filters;
+
+  // Step 1: Get rows matching customer (or all)
+  let pool = state.parsedRows;
+  if (f.customer) pool = pool.filter(r => r.customerName === f.customer);
+
+  // Customers always show all
+  setSelectOpts('filter-customer', state.customers, c=>c.name, c=>c.name, 'All Customers', f.customer);
+
+  // Step 2: Brands available in the customer-filtered pool
+  const availBrands = [...new Set(pool.map(r => r.brand).filter(Boolean))].sort();
+  f.brand = setSelectOpts('filter-brand', availBrands, b=>b, b=>b, 'All Brands', f.brand);
+
+  // Step 3: Narrow by brand
+  if (f.brand) pool = pool.filter(r => r.brand === f.brand);
+  const availTypes = [...new Set(pool.map(r => r.type).filter(Boolean))].sort();
+  f.type = setSelectOpts('filter-type', availTypes, t=>t, t=>t, 'All Types', f.type);
+
+  // Step 4: Narrow by type
+  if (f.type) pool = pool.filter(r => r.type === f.type);
+  const availFormations = [...new Set(pool.map(r => r.formation).filter(Boolean))].sort();
+  f.formation = setSelectOpts('filter-formation', availFormations, ff=>ff, ff=>ff, 'All Formations', f.formation);
+
+  // Step 5: Narrow by formation
+  if (f.formation) pool = pool.filter(r => r.formation === f.formation);
+  const availProducts = [...new Set(pool.map(r => r.productNumber))].map(pn => state.products.find(p => p.productNumber === pn)).filter(Boolean);
+  availProducts.sort((a,b) => a.productName.localeCompare(b.productName));
+  f.product = setSelectOpts('filter-product', availProducts, p=>p.productName, p=>p.productNumber, 'All Products', f.product);
+}
+
 function onFilterChange() {
   state.filters.customer = document.getElementById('filter-customer').value;
   state.filters.brand = document.getElementById('filter-brand').value;
   state.filters.type = document.getElementById('filter-type').value;
   state.filters.formation = document.getElementById('filter-formation').value;
   state.filters.product = document.getElementById('filter-product').value;
-  // Hide save button — preview is stale after filter change
+
+  // Re-cascade: downstream filters may need to update
+  updateCascadingFilters();
+
   document.getElementById('save-forecast-btn').classList.add('hidden');
   invalidateCache();
   renderDashboard();
@@ -962,7 +1002,7 @@ function onFilterChange() {
 
 function resetFilters() {
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
-  ['filter-customer','filter-brand','filter-type','filter-formation','filter-product'].forEach(id => document.getElementById(id).value = '');
+  updateCascadingFilters();
   invalidateCache();
   renderDashboard();
 }
