@@ -128,6 +128,14 @@
     .btn-secondary:hover { background: #e5e7eb; }
     .best-method-result { margin-top: 8px; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 12px; color: #166534; }
     .variance-pos { color: #dc2626; } .variance-neg { color: #2563eb; } .variance-zero { color: #9ca3af; }
+    /* View toggle */
+    .view-toggle { display: inline-flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; font-size: 12px; }
+    .view-toggle button { padding: 4px 14px; background: #fff; border: none; color: #6b7280; cursor: pointer; font-family: inherit; font-size: 12px; }
+    .view-toggle button.active { background: #2563eb; color: #fff; }
+    /* Expandable grid rows */
+    .expand-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0 4px; color: #6b7280; }
+    .week-row td { background: #f9fafb; font-size: 12px; color: #6b7280; }
+    .week-row td:first-child { padding-left: 28px; }
     /* Accuracy metrics */
     .accuracy-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
     @media (min-width: 768px) { .accuracy-grid { grid-template-columns: repeat(4, 1fr); } }
@@ -179,6 +187,7 @@
             <span class="col-tag">ORDER CASES</span>
             <span class="col-tag">FORECAST</span>
             <span class="col-tag">MAX_WKS_PER_MONTH</span>
+            <span class="col-tag">WEEK_NUMBER_OF_MONTH</span>
           </div>
           <p class="text-xs text-gray-400 mt-2">* Required columns</p>
         </div>
@@ -259,7 +268,15 @@
         <div>
           <!-- Chart -->
           <div class="card p-6">
-            <h2 class="text-sm font-semibold text-gray-700 mb-4">Sales & Forecast Trend</h2>
+            <div class="flex justify-between items-center mb-4">
+              <h2 class="text-sm font-semibold text-gray-700">Sales & Forecast Trend</h2>
+              <div id="view-toggle-container" class="hidden">
+                <div class="view-toggle">
+                  <button id="view-month-btn" class="active" onclick="setViewMode('month')">Month</button>
+                  <button id="view-week-btn" onclick="setViewMode('week')">Week</button>
+                </div>
+              </div>
+            </div>
             <div style="height:350px; position:relative;"><canvas id="forecast-chart"></canvas></div>
           </div>
           <!-- Accuracy / Backtesting -->
@@ -377,6 +394,8 @@ const state = {
   previewParams: null,   // config params used for the preview
   overrides: {},
   hasPosData: false,
+  isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
+  viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
   weeksMap: {},          // month string => maxWksPerMonth value from upload
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
 };
@@ -417,6 +436,7 @@ const COLUMN_MAP = {
   'INVOICE CASES': 'invoiceCases', 'ORDER CASES': 'orderCases', 'FORECAST': 'forecast',
   'MAX_WKS_PER_MONTH': 'maxWksPerMonth',
   'MONTH_NUMBER_OF_YEAR': 'monthNumber', 'YEAR': 'year',
+  'WEEK_NUMBER_OF_MONTH': 'weekNumber',
 };
 const REQUIRED = ['CUSTOMER_NAME', 'PRODUCTNUMBER', 'MONTH_NUMBER_OF_YEAR', 'YEAR'];
 
@@ -457,7 +477,8 @@ function parseFile(buffer) {
         formation: String(m.formation||'').trim(), productName: String(m.productName||'').trim(),
         productNumber, month, posCases: toNum(m.posCases), invoiceCases: toNum(m.invoiceCases),
         orderCases: toNum(m.orderCases), forecast: toNum(m.forecast),
-        maxWksPerMonth: toNum(m.maxWksPerMonth) });
+        maxWksPerMonth: toNum(m.maxWksPerMonth),
+        weekNumber: toNum(m.weekNumber) });
     }
     return { success: true, rows, errors, rowCount: rows.length };
   } catch (e) {
@@ -698,11 +719,38 @@ function showUpload() {
   document.getElementById('upload-view').classList.remove('hidden');
   document.getElementById('dashboard-view').classList.add('hidden');
 }
+
+function setViewMode(mode) {
+  state.viewMode = mode;
+  document.getElementById('view-month-btn').classList.toggle('active', mode === 'month');
+  document.getElementById('view-week-btn').classList.toggle('active', mode === 'week');
+  invalidateCache();
+  renderDashboard();
+}
+
+// Time key for a row: weekly = "YYYY-MM-WN", monthly = "YYYY-MM-15"
+function timeKey(r) {
+  if (state.isWeekly && r.weekNumber) return r.month.substring(0, 7) + '-W' + r.weekNumber;
+  return r.month;
+}
+
+// For display labels
+function fmtTimeKey(key) {
+  if (key.includes('-W')) {
+    const parts = key.split('-W');
+    const d = new Date(parts[0] + '-15T00:00:00');
+    return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' }) + ' W' + parts[1];
+  }
+  const d = new Date(key + 'T00:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+}
 function showDashboard() {
   document.getElementById('upload-view').classList.add('hidden');
   document.getElementById('dashboard-view').classList.remove('hidden');
   document.getElementById('file-info').textContent = state.fileName || '';
   populateFilters();
+  // Show week/month toggle only for weekly data
+  document.getElementById('view-toggle-container').classList.toggle('hidden', !state.isWeekly);
   invalidateCache();
   renderDashboard();
   renderSavedPanel();
@@ -735,6 +783,8 @@ function loadData(rows, fileName) {
   state.customers = [...custSet.values()].sort((a,b) => a.name.localeCompare(b.name));
   state.products = [...prodSet.values()].sort((a,b) => a.productName.localeCompare(b.productName));
   state.hasPosData = rows.some(r => r.posCases != null && r.posCases > 0);
+  state.isWeekly = rows.some(r => r.weekNumber != null && r.weekNumber > 0);
+  state.viewMode = 'month';
 
 
   // Build weeks-per-month lookup from MAX_WKS_PER_MONTH column
@@ -1398,10 +1448,81 @@ function setOverride(month, value) {
 // DASHBOARD ROWS
 // ============================================================
 function getDashboardRows() {
-  const key = getDashKey();
+  const key = getDashKey() + '|' + state.viewMode;
   if (state._cache.dashKey === key) return state._cache.dashRows;
 
   const filtered = getFilteredRows();
+  const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  const statResults = state.forecastResults[fcKey] || [];
+  const statMap = new Map(statResults.map(r => [r.month, r.statValue]));
+  const overridePrefix = fcKey + '|';
+
+  // Build weekly-level rows if data is weekly
+  if (state.isWeekly) {
+    // Aggregate by timeKey (YYYY-MM-WN)
+    const weekActualMap = new Map(), weekFcstMap = new Map();
+    for (const r of filtered) {
+      const tk = timeKey(r);
+      const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
+      if (hasActuals) {
+        const prev = weekActualMap.get(tk) || { pos: 0, invoice: 0, order: 0 };
+        weekActualMap.set(tk, { pos: prev.pos+(r.posCases||0), invoice: prev.invoice+(r.invoiceCases||0), order: prev.order+(r.orderCases||0) });
+      }
+      if (r.forecast != null) weekFcstMap.set(tk, (weekFcstMap.get(tk)||0) + r.forecast);
+    }
+
+    // Build monthly aggregated rows with weekRows for drill-down
+    const monthAgg = new Map(); // monthKey => { actuals, fcst, weekRows[] }
+    const allWeekKeys = new Set([...weekActualMap.keys(), ...weekFcstMap.keys()]);
+
+    for (const tk of allWeekKeys) {
+      const monthKey = tk.includes('-W') ? tk.split('-W')[0] + '-15' : tk;
+      if (!monthAgg.has(monthKey)) monthAgg.set(monthKey, { pos: 0, invoice: 0, order: 0, fcst: 0, hasFcst: false, hasActuals: false, weekRows: [] });
+      const ma = monthAgg.get(monthKey);
+      const wa = weekActualMap.get(tk);
+      const wf = weekFcstMap.get(tk);
+      if (wa) { ma.pos += wa.pos; ma.invoice += wa.invoice; ma.order += wa.order; ma.hasActuals = true; }
+      if (wf != null) { ma.fcst += wf; ma.hasFcst = true; }
+      // Store week detail
+      ma.weekRows.push({
+        timeKey: tk, posCases: wa?wa.pos:null, invoiceCases: wa?wa.invoice:null,
+        orderCases: wa?wa.order:null, existingForecast: wf??null, isHistorical: !!wa
+      });
+    }
+
+    // Also add stat forecast months to monthAgg
+    for (const [m, v] of statMap) {
+      if (!monthAgg.has(m)) monthAgg.set(m, { pos: 0, invoice: 0, order: 0, fcst: 0, hasFcst: false, hasActuals: false, weekRows: [] });
+    }
+
+    // Sort week rows within each month
+    monthAgg.forEach(ma => ma.weekRows.sort((a,b) => a.timeKey.localeCompare(b.timeKey)));
+
+    const allMonths = [...monthAgg.keys(), ...statMap.keys()];
+    const uniqueMonths = [...new Set(allMonths)].sort();
+
+    const result = uniqueMonths.map(month => {
+      const ma = monthAgg.get(month);
+      const stat = statMap.get(month);
+      const ov = state.overrides[overridePrefix + month];
+      const isHistorical = ma ? ma.hasActuals : false;
+      const existingForecast = (ma && ma.hasFcst) ? ma.fcst : null;
+      return {
+        month, posCases: (ma && ma.hasActuals) ? ma.pos : null,
+        invoiceCases: (ma && ma.hasActuals) ? ma.invoice : null,
+        orderCases: (ma && ma.hasActuals) ? ma.order : null,
+        existingForecast, statForecast: stat??null,
+        overrideVal: ov??null, finalValue: ov??stat??existingForecast??null,
+        isHistorical, weekRows: ma ? ma.weekRows : []
+      };
+    });
+
+    state._cache.dashKey = key;
+    state._cache.dashRows = result;
+    return result;
+  }
+
+  // Monthly data (original logic)
   const actualMap = new Map(), existingFcstMap = new Map();
   for (const r of filtered) {
     const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
@@ -1412,16 +1533,11 @@ function getDashboardRows() {
     if (r.forecast != null) existingFcstMap.set(r.month, (existingFcstMap.get(r.month)||0) + r.forecast);
   }
 
-  const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
-  const statResults = state.forecastResults[fcKey] || [];
-  const statMap = new Map(statResults.map(r => [r.month, r.statValue]));
-
   const allMonths = new Set();
   actualMap.forEach((_,m) => allMonths.add(m));
   existingFcstMap.forEach((_,m) => allMonths.add(m));
   statMap.forEach((_,m) => allMonths.add(m));
 
-  const overridePrefix = fcKey + '|';
   const result = [...allMonths].sort().map(month => {
     const actual = actualMap.get(month);
     const existing = existingFcstMap.get(month);
@@ -1430,7 +1546,7 @@ function getDashboardRows() {
     const isHistorical = !!actual;
     return { month, posCases: actual?actual.pos:null, invoiceCases: actual?actual.invoice:null,
       orderCases: actual?actual.order:null, existingForecast: existing??null, statForecast: stat??null,
-      overrideVal: ov??null, finalValue: ov??stat??existing??null, isHistorical };
+      overrideVal: ov??null, finalValue: ov??stat??existing??null, isHistorical, weekRows: [] };
   });
   state._cache.dashKey = key;
   state._cache.dashRows = result;
@@ -1460,14 +1576,30 @@ function fmtMonth(m) { const d = new Date(m + 'T00:00:00'); return d.toLocaleDat
 // ============================================================
 function renderChart(rows) {
   const ctx = document.getElementById('forecast-chart');
-  const labels = rows.map(r => fmtMonth(r.month));
+
+  // In week view with weekly data, flatten weekRows into chart data points
+  let chartRows = rows;
+  if (state.isWeekly && state.viewMode === 'week') {
+    chartRows = [];
+    for (const r of rows) {
+      if (r.weekRows && r.weekRows.length > 0) {
+        for (const w of r.weekRows) {
+          chartRows.push({ ...w, statForecast: null, overrideVal: null, finalValue: null, month: w.timeKey });
+        }
+      } else {
+        chartRows.push(r);
+      }
+    }
+  }
+
+  const labels = chartRows.map(r => fmtTimeKey(r.month));
   const datasets = [
-    { label: 'POS', data: rows.map(r=>r.posCases), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
-    { label: 'Invoice', data: rows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
-    { label: 'Orders', data: rows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
-    { label: 'Existing Fcst', data: rows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
-    { label: 'Stat Forecast', data: rows.map(r=>r.statForecast), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
-    { label: 'Override', data: rows.map(r=>r.overrideVal), borderColor: '#22c55e', borderWidth: 0, pointRadius: rows.map(r=>r.overrideVal!=null?5:0), pointBackgroundColor: '#22c55e', spanGaps: false, showLine: false },
+    { label: 'POS', data: chartRows.map(r=>r.posCases), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Invoice', data: chartRows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Orders', data: chartRows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Existing Fcst', data: chartRows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Stat Forecast', data: chartRows.map(r=>r.statForecast), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Override', data: chartRows.map(r=>r.overrideVal), borderColor: '#22c55e', borderWidth: 0, pointRadius: chartRows.map(r=>r.overrideVal!=null?5:0), pointBackgroundColor: '#22c55e', spanGaps: false, showLine: false },
   ];
 
   if (chart) {
@@ -1491,36 +1623,63 @@ function renderChart(rows) {
 // ============================================================
 // DATA GRID (DocumentFragment for performance)
 // ============================================================
+function buildGridRow(r, isWeekDetail) {
+  const wks = state.weeksMap[r.month];
+  let varianceHtml = '';
+  if (r.statForecast != null && r.existingForecast != null) {
+    const v = r.statForecast - r.existingForecast;
+    const cls = v > 0 ? 'variance-pos' : v < 0 ? 'variance-neg' : 'variance-zero';
+    varianceHtml = '<td class="num ' + cls + '">' + (v > 0 ? '+' : '') + fmt(v) + '</td>';
+  } else {
+    varianceHtml = '<td class="num"></td>';
+  }
+  const label = isWeekDetail ? sanitize(fmtTimeKey(r.month)) : sanitize(r.month);
+  const safeMonth = sanitize(r.month);
+  return '<td>' + label + '</td>' +
+    '<td class="num" style="color:#9ca3af">' + (wks != null ? wks : '') + '</td>' +
+    '<td class="num">' + fmt(r.posCases) + '</td>' +
+    '<td class="num">' + fmt(r.invoiceCases) + '</td>' +
+    '<td class="num">' + fmt(r.orderCases) + '</td>' +
+    '<td class="num">' + fmt(r.existingForecast) + '</td>' +
+    '<td class="num stat-color">' + fmt(r.statForecast) + '</td>' +
+    varianceHtml +
+    (r.isHistorical || isWeekDetail
+      ? '<td class="num"></td>'
+      : '<td class="num' + (r.overrideVal != null ? ' override-cell' : '') + '"><input type="number" value="' + (r.overrideVal ?? '') + '" data-month="' + safeMonth + '"></td>') +
+    '<td class="num final-bold">' + fmt(r.finalValue) + '</td>';
+}
+
 function renderGrid(rows) {
   const tbody = document.getElementById('grid-body');
   const frag = document.createDocumentFragment();
+  const hasWeekRows = state.isWeekly && rows.some(r => r.weekRows && r.weekRows.length > 0);
+
   for (const r of rows) {
     const tr = document.createElement('tr');
-    const wks = state.weeksMap[r.month];
-    // Variance = Stat Forecast - Existing Forecast
-    let varianceHtml = '';
-    if (r.statForecast != null && r.existingForecast != null) {
-      const v = r.statForecast - r.existingForecast;
-      const cls = v > 0 ? 'variance-pos' : v < 0 ? 'variance-neg' : 'variance-zero';
-      varianceHtml = '<td class="num ' + cls + '">' + (v > 0 ? '+' : '') + fmt(v) + '</td>';
-    } else {
-      varianceHtml = '<td class="num"></td>';
+    // Add expand button if this month has week detail
+    const canExpand = hasWeekRows && r.weekRows && r.weekRows.length > 0;
+    const expandPrefix = canExpand ? '<button class="expand-btn" data-expand="' + sanitize(r.month) + '">&#9654;</button> ' : '';
+    tr.innerHTML = buildGridRow(r, false);
+    // Prepend expand button to first cell
+    if (canExpand) {
+      tr.firstChild.innerHTML = expandPrefix + tr.firstChild.innerHTML;
     }
-    const safeMonth = sanitize(r.month);
-    tr.innerHTML =
-      '<td>' + safeMonth + '</td>' +
-      '<td class="num" style="color:#9ca3af">' + (wks != null ? wks : '') + '</td>' +
-      '<td class="num">' + fmt(r.posCases) + '</td>' +
-      '<td class="num">' + fmt(r.invoiceCases) + '</td>' +
-      '<td class="num">' + fmt(r.orderCases) + '</td>' +
-      '<td class="num">' + fmt(r.existingForecast) + '</td>' +
-      '<td class="num stat-color">' + fmt(r.statForecast) + '</td>' +
-      varianceHtml +
-      (r.isHistorical
-        ? '<td class="num"></td>'
-        : '<td class="num' + (r.overrideVal != null ? ' override-cell' : '') + '"><input type="number" value="' + (r.overrideVal ?? '') + '" data-month="' + safeMonth + '"></td>') +
-      '<td class="num final-bold">' + fmt(r.finalValue) + '</td>';
     frag.appendChild(tr);
+
+    // Add hidden week rows
+    if (canExpand) {
+      for (const w of r.weekRows) {
+        const wtr = document.createElement('tr');
+        wtr.className = 'week-row hidden';
+        wtr.dataset.parent = r.month;
+        wtr.innerHTML = buildGridRow({
+          month: w.timeKey, posCases: w.posCases, invoiceCases: w.invoiceCases,
+          orderCases: w.orderCases, existingForecast: w.existingForecast,
+          statForecast: null, overrideVal: null, finalValue: null, isHistorical: w.isHistorical
+        }, true);
+        frag.appendChild(wtr);
+      }
+    }
   }
   tbody.textContent = '';
   tbody.appendChild(frag);
@@ -1530,6 +1689,17 @@ function renderGrid(rows) {
     if (e.target.tagName === 'INPUT' && e.target.dataset.month) {
       setOverride(e.target.dataset.month, e.target.value === '' ? null : e.target.value);
     }
+  };
+
+  // Attach expand/collapse via delegation
+  tbody.onclick = function(e) {
+    const btn = e.target.closest('.expand-btn');
+    if (!btn) return;
+    const monthKey = btn.dataset.expand;
+    const weekRows = tbody.querySelectorAll('tr.week-row[data-parent="' + monthKey + '"]');
+    const isExpanded = btn.innerHTML === '&#9660;';
+    btn.innerHTML = isExpanded ? '&#9654;' : '&#9660;';
+    weekRows.forEach(r => r.classList.toggle('hidden'));
   };
 }
 
@@ -1541,38 +1711,71 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
   const params = getConfigParams();
   const methodLabel = params.method;
 
-  // Get source rows from parsed data matching the filters
   const sourceRows = state.parsedRows.filter(r => {
     if (customerFilter && r.customerName !== customerFilter) return false;
     if (productFilter && r.productNumber !== productFilter) return false;
     return true;
   });
 
+  // If weekly data, aggregate to monthly for export
+  if (state.isWeekly) {
+    const monthMap = new Map(); // key "customer|product|month" => aggregated row
+    for (const r of sourceRows) {
+      const mk = r.customerName + '|' + r.productNumber + '|' + r.month;
+      if (!monthMap.has(mk)) {
+        monthMap.set(mk, {
+          customerName: r.customerName, brand: r.brand, type: r.type, formation: r.formation,
+          productName: r.productName, productNumber: r.productNumber, month: r.month,
+          posCases: 0, invoiceCases: 0, orderCases: 0, forecast: 0,
+          maxWksPerMonth: r.maxWksPerMonth, _hasFcst: false, _hasActuals: false
+        });
+      }
+      const agg = monthMap.get(mk);
+      if (r.posCases != null) { agg.posCases += r.posCases; agg._hasActuals = true; }
+      if (r.invoiceCases != null) { agg.invoiceCases += r.invoiceCases; agg._hasActuals = true; }
+      if (r.orderCases != null) { agg.orderCases += r.orderCases; agg._hasActuals = true; }
+      if (r.forecast != null) { agg.forecast += r.forecast; agg._hasFcst = true; }
+    }
+    return [...monthMap.values()].map(r => {
+      const fcKey = r.customerName + '|' + r.productNumber;
+      const skuResults = skuForecastMap[fcKey] || [];
+      const statMap = new Map(skuResults.map(f => [f.month, f.statValue]));
+      const ov = overrides[fcKey + '|' + r.month];
+      const stat = statMap.get(r.month);
+      const updatedForecast = ov ?? stat ?? null;
+      const parts = r.month.split('-');
+      const row = {
+        CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
+        PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
+        YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
+        'POS CASES': r._hasActuals ? r.posCases : null,
+        'INVOICE CASES': r._hasActuals ? r.invoiceCases : null,
+        'ORDER CASES': r._hasActuals ? r.orderCases : null,
+        FORECAST: r._hasFcst ? r.forecast : null,
+      };
+      if (r.maxWksPerMonth != null) row['MAX_WKS_PER_MONTH'] = r.maxWksPerMonth;
+      row['UPDATED FORECAST'] = updatedForecast;
+      row['METHOD'] = updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null;
+      return row;
+    });
+  }
+
+  // Monthly data — direct mapping
   return sourceRows.map(r => {
-    // Look up forecast for this SKU
     const fcKey = r.customerName + '|' + r.productNumber;
     const skuResults = skuForecastMap[fcKey] || [];
     const statMap = new Map(skuResults.map(f => [f.month, f.statValue]));
-    const ovKey = fcKey + '|' + r.month;
-    const ov = overrides[ovKey];
+    const ov = overrides[fcKey + '|' + r.month];
     const stat = statMap.get(r.month);
     const updatedForecast = ov ?? stat ?? null;
-
-    const row = {
-      CUSTOMER_NAME: r.customerName,
-      BRAND: r.brand,
-      TYPE: r.type,
-      FORMATION: r.formation,
-      PRODUCTNAME: r.productName,
-      PRODUCTNUMBER: r.productNumber,
-    };
     const parts = r.month.split('-');
-    row['YEAR'] = parseInt(parts[0]);
-    row['MONTH_NUMBER_OF_YEAR'] = parseInt(parts[1]);
-    row['POS CASES'] = r.posCases;
-    row['INVOICE CASES'] = r.invoiceCases;
-    row['ORDER CASES'] = r.orderCases;
-    row['FORECAST'] = r.forecast;
+    const row = {
+      CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
+      PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
+      YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
+      'POS CASES': r.posCases, 'INVOICE CASES': r.invoiceCases,
+      'ORDER CASES': r.orderCases, FORECAST: r.forecast,
+    };
     if (r.maxWksPerMonth != null) row['MAX_WKS_PER_MONTH'] = r.maxWksPerMonth;
     row['UPDATED FORECAST'] = updatedForecast;
     row['METHOD'] = updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null;
