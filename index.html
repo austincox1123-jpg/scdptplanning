@@ -182,9 +182,9 @@
             <span class="col-tag">TYPE</span>
             <span class="col-tag">FORMATION</span>
             <span class="col-tag">PRODUCTNAME</span>
-            <span class="col-tag">POS CASES</span>
-            <span class="col-tag">INVOICE CASES</span>
-            <span class="col-tag">ORDER CASES</span>
+            <span class="col-tag">POS_CASES</span>
+            <span class="col-tag">INVOICE_CASES</span>
+            <span class="col-tag">ORDER_CASES</span>
             <span class="col-tag">FORECAST</span>
             <span class="col-tag">MAX_WKS_PER_MONTH</span>
             <span class="col-tag">WEEK_NUMBER_OF_MONTH</span>
@@ -453,8 +453,8 @@ function forecastMonth(lastDate, i) {
 const COLUMN_MAP = {
   'CUSTOMER_NAME': 'customerName', 'BRAND': 'brand', 'TYPE': 'type',
   'FORMATION': 'formation', 'PRODUCTNAME': 'productName', 'PRODUCTNUMBER': 'productNumber',
-  'POS CASES': 'posCases',
-  'INVOICE CASES': 'invoiceCases', 'ORDER CASES': 'orderCases', 'FORECAST': 'forecast',
+  'POS_CASES': 'posCases',
+  'INVOICE_CASES': 'invoiceCases', 'ORDER_CASES': 'orderCases', 'FORECAST': 'forecast',
   'MAX_WKS_PER_MONTH': 'maxWksPerMonth',
   'MONTH_NUMBER_OF_YEAR': 'monthNumber', 'YEAR': 'year',
   'WEEK_NUMBER_OF_MONTH': 'weekNumber',
@@ -769,9 +769,12 @@ function holtsLinearTrend(actuals, params, horizon) {
   const alpha = params.alpha || 0.3;
   const beta = Math.min(alpha * 0.5, 0.3); // trend smoothing, more conservative than level
 
-  // Initialize level and trend from first two values
+  // Initialize level as first value, trend as average slope over first N points
   let level = sorted[0].value;
-  let trend = sorted[1].value - sorted[0].value;
+  const initN = Math.min(sorted.length, Math.max(6, win));
+  let trend = 0;
+  for (let i = 1; i < initN; i++) trend += (sorted[i].value - sorted[i-1].value);
+  trend /= (initN - 1);
 
   // Smooth through all actuals
   for (let i = 1; i < sorted.length; i++) {
@@ -1889,9 +1892,9 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
         CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
         PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
         YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
-        'POS CASES': r._hasActuals ? r.posCases : null,
-        'INVOICE CASES': r._hasActuals ? r.invoiceCases : null,
-        'ORDER CASES': r._hasActuals ? r.orderCases : null,
+        'POS_CASES': r._hasActuals ? r.posCases : null,
+        'INVOICE_CASES': r._hasActuals ? r.invoiceCases : null,
+        'ORDER_CASES': r._hasActuals ? r.orderCases : null,
         FORECAST: r._hasFcst ? r.forecast : null,
       };
       if (r.maxWksPerMonth != null) row['MAX_WKS_PER_MONTH'] = r.maxWksPerMonth;
@@ -1914,8 +1917,8 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
       PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
       YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
-      'POS CASES': r.posCases, 'INVOICE CASES': r.invoiceCases,
-      'ORDER CASES': r.orderCases, FORECAST: r.forecast,
+      'POS_CASES': r.posCases, 'INVOICE_CASES': r.invoiceCases,
+      'ORDER_CASES': r.orderCases, FORECAST: r.forecast,
     };
     if (r.maxWksPerMonth != null) row['MAX_WKS_PER_MONTH'] = r.maxWksPerMonth;
     row['UPDATED FORECAST'] = updatedForecast;
