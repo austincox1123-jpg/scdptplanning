@@ -422,9 +422,27 @@ function sanitize(str) { const d = document.createElement('div'); d.textContent 
 // Format date as YYYY-MM-DD using local time (avoids UTC timezone shift bugs with toISOString)
 function dateStr(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); }
 
-// Generate a forecast month date string, i months after lastDate (always day 15)
+// Generate a forecast period key, i periods after lastDate
+// Monthly: i months forward. Weekly: i weeks forward (generates YYYY-MM-WN keys).
 function forecastMonth(lastDate, i) {
-  const d = new Date(lastDate.getFullYear(), lastDate.getMonth() + i, 15);
+  if (!state.isWeekly) {
+    const d = new Date(lastDate.getFullYear(), lastDate.getMonth() + i, 15);
+    return dateStr(d);
+  }
+  // Weekly: lastDate.month is like "2026-02-W4". Parse it and step forward i weeks.
+  const lastKey = typeof lastDate === 'string' ? lastDate : (lastDate.month || dateStr(lastDate));
+  const wMatch = lastKey.match(/^(\d{4})-(\d{2})-W(\d)$/);
+  if (wMatch) {
+    let yr = parseInt(wMatch[1]), mo = parseInt(wMatch[2]), wk = parseInt(wMatch[3]);
+    for (let s = 0; s < i; s++) {
+      wk++;
+      const maxWk = state.weeksMap[yr + '-' + String(mo).padStart(2,'0') + '-15'] || 4;
+      if (wk > maxWk) { wk = 1; mo++; if (mo > 12) { mo = 1; yr++; } }
+    }
+    return yr + '-' + String(mo).padStart(2,'0') + '-W' + wk;
+  }
+  // Fallback: monthly
+  const d = new Date(lastDate.getFullYear ? lastDate.getFullYear() : 2026, lastDate.getMonth ? lastDate.getMonth() + i : i, 15);
   return dateStr(d);
 }
 
@@ -516,13 +534,17 @@ function weightedMovingAverage(actuals, params, horizon) {
   if (params.seasonality && sorted.length >= 12) seasonal = calcSeasonalIndices(sorted);
   const results = [], values = sorted.map(p => p.value);
   let recent = values.slice(-win);
-  const last = new Date(sorted[sorted.length-1].month);
+  const lastKey = sorted[sorted.length-1].month;
   for (let i = 1; i <= horizon; i++) {
     let fc = 0;
     for (let j = 0; j < win; j++) fc += recent[recent.length - win + j] * weights[j];
-    if (seasonal) { const td = new Date(last); td.setMonth(td.getMonth() + i); fc *= seasonal[td.getMonth()]; }
+    if (seasonal) {
+      const fk = forecastMonth(lastKey, i);
+      const moMatch = fk.match(/^(\d{4})-(\d{2})/);
+      if (moMatch) fc *= seasonal[parseInt(moMatch[2]) - 1];
+    }
     fc = Math.round(fc * 100) / 100;
-    results.push({ month: forecastMonth(last, i), statValue: fc });
+    results.push({ month: forecastMonth(lastKey, i), statValue: fc });
     recent.push(fc);
   }
   return results;
@@ -534,9 +556,9 @@ function exponentialSmoothing(actuals, params, horizon) {
   const alpha = params.alpha || 0.3;
   let smoothed = sorted[0].value;
   for (let i = 1; i < sorted.length; i++) smoothed = alpha * sorted[i].value + (1-alpha) * smoothed;
-  const results = [], last = new Date(sorted[sorted.length-1].month);
+  const results = [], lastKey = sorted[sorted.length-1].month;
   for (let i = 1; i <= horizon; i++) {
-    results.push({ month: forecastMonth(last, i), statValue: Math.round(smoothed*100)/100 });
+    results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(smoothed*100)/100 });
   }
   return results;
 }
@@ -550,14 +572,14 @@ function posToShipmentLag(posData, shipData, lag, win, horizon) {
   const recent = sp.slice(-win - lag);
   for (let i = lag; i < recent.length; i++) {
     const pv = recent[i-lag].value;
-    const sv = shipMap.get(forecastMonth(new Date(recent[i-lag].month), lag));
+    const sv = shipMap.get(forecastMonth(recent[i-lag].month, lag));
     if (pv > 0 && sv !== undefined) { ratioSum += sv/pv; ratioCount++; }
   }
   const ratio = ratioCount > 0 ? ratioSum/ratioCount : 1;
-  const results = [], last = new Date(sp[sp.length-1].month);
+  const results = [], lastKey = sp[sp.length-1].month;
   for (let i = 1; i <= horizon; i++) {
-    const fcMonth = forecastMonth(last, i);
-    const posLookback = forecastMonth(last, i - lag);
+    const fcMonth = forecastMonth(lastKey, i);
+    const posLookback = forecastMonth(lastKey, i - lag);
     const pp = sp.find(p=>p.month===posLookback);
     const pv = pp ? pp.value : sp[sp.length-1].value;
     results.push({ month: fcMonth, statValue: Math.round(pv*ratio*100)/100 });
@@ -576,9 +598,9 @@ function consumptionRate(posData, shipData, win, horizon) {
   for (const m of common) { const s = shipMap.get(m); if (s>0) { rateSum += posMap.get(m)/s; rc++; } }
   const rate = rc > 0 ? rateSum/rc : 1;
   const baseShip = ss.slice(-win).reduce((s,p)=>s+p.value,0) / Math.min(win, ss.length);
-  const results = [], last = new Date(ss[ss.length-1].month);
+  const results = [], lastKey = ss[ss.length-1].month;
   for (let i = 1; i <= horizon; i++) {
-    results.push({ month: forecastMonth(last, i), statValue: Math.round(baseShip*rate*100)/100 });
+    results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(baseShip*rate*100)/100 });
   }
   return results;
 }
@@ -596,11 +618,14 @@ function extractSeries(rows, source) {
 
 function runForecastEngine(actuals, params, horizon) {
   const wm = state.weeksMap;
-  const hasWeeks = Object.keys(wm).length > 0;
+  const hasWeeksMap = Object.keys(wm).length > 0;
 
-  // If we have weeks data, normalize actuals to per-week before forecasting
+  // If data is weekly, actuals are already at week level — run forecast on weekly series
+  // If monthly with MAX_WKS_PER_MONTH, normalize to per-week, forecast, scale back up
   let series = extractSeries(actuals, params.source);
-  if (hasWeeks) {
+
+  if (!state.isWeekly && hasWeeksMap) {
+    // Monthly data with weeks info: normalize to per-week basis
     series = series.map(p => {
       const wks = wm[p.month] || 4;
       return { month: p.month, value: p.value / wks };
@@ -614,7 +639,7 @@ function runForecastEngine(actuals, params, horizon) {
     case 'pos_lag': {
       let pos = extractSeries(actuals, 'pos');
       let ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
-      if (hasWeeks) {
+      if (!state.isWeekly && hasWeeksMap) {
         pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
         ship = ship.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
       }
@@ -624,7 +649,7 @@ function runForecastEngine(actuals, params, horizon) {
     case 'consumption_rate': {
       let pos = extractSeries(actuals, 'pos');
       let ord = extractSeries(actuals, 'order');
-      if (hasWeeks) {
+      if (!state.isWeekly && hasWeeksMap) {
         pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
         ord = ord.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
       }
@@ -636,10 +661,10 @@ function runForecastEngine(actuals, params, horizon) {
     default: results = weightedMovingAverage(series, params, horizon);
   }
 
-  // Scale forecast back up by weeks per month for each future month
-  if (hasWeeks && results.length) {
+  // Scale back up by weeks per month (only for monthly data with weeks info, NOT weekly data)
+  if (!state.isWeekly && hasWeeksMap && results.length) {
     results = results.map(r => {
-      const wks = wm[r.month] || 4; // default 4 if no weeks data for this future month
+      const wks = wm[r.month] || 4;
       return { month: r.month, statValue: Math.round(r.statValue * wks * 100) / 100 };
     });
   }
@@ -670,14 +695,19 @@ function linearAverage(actuals, params, horizon) {
   const avgWeeklyRate = totalWeeks > 0 ? totalVol / totalWeeks : 0;
 
   const results = [];
-  const last = new Date(sorted[sorted.length - 1].month);
+  const lastKey = sorted[sorted.length - 1].month;
   for (let i = 1; i <= horizon; i++) {
-    // Get days in the target month for weekly rate calculation
-    const targetDate = new Date(last.getFullYear(), last.getMonth() + i + 1, 0);
-    const daysInMonth = targetDate.getDate();
-    const weeksInMonth = daysInMonth / 7;
-    const forecast = Math.round(avgWeeklyRate * weeksInMonth * 100) / 100;
-    results.push({ month: forecastMonth(last, i), statValue: forecast });
+    // For weekly data, each period is 1 week so just use the weekly rate
+    if (state.isWeekly) {
+      results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(avgWeeklyRate * 100) / 100 });
+    } else {
+      const moMatch = lastKey.match(/^(\d{4})-(\d{2})/);
+      const baseYr = moMatch ? parseInt(moMatch[1]) : 2026;
+      const baseMo = moMatch ? parseInt(moMatch[2]) - 1 : 0;
+      const targetDate = new Date(baseYr, baseMo + i + 1, 0);
+      const weeksInMonth = targetDate.getDate() / 7;
+      results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(avgWeeklyRate * weeksInMonth * 100) / 100 });
+    }
   }
   return results;
 }
@@ -704,12 +734,11 @@ function linearSlope(actuals, params, horizon) {
   const intercept = (sumY - slope * sumX) / n;
 
   const results = [];
-  const last = new Date(sorted[sorted.length - 1].month);
+  const lastKey = sorted[sorted.length - 1].month;
   for (let i = 1; i <= horizon; i++) {
-    // x continues from where the lookback ended: last point was x = n-1
     const x = (n - 1) + i;
     const forecast = Math.max(0, Math.round((slope * x + intercept) * 100) / 100);
-    results.push({ month: forecastMonth(last, i), statValue: forecast });
+    results.push({ month: forecastMonth(lastKey, i), statValue: forecast });
   }
   return results;
 }
@@ -903,21 +932,24 @@ function runForecast() {
     requestAnimationFrame(() => {
       try {
         const filtered = getFilteredRows();
-        const monthAgg = new Map();
+        const agg = new Map();
         for (const r of filtered) {
           if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
-            const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
+            const tk = timeKey(r); // weekly key if weekly data, monthly key otherwise
+            const prev = agg.get(tk) || { month: tk, posCases: 0, invoiceCases: 0, orderCases: 0 };
             prev.posCases += r.posCases || 0;
             prev.invoiceCases += r.invoiceCases || 0;
             prev.orderCases += r.orderCases || 0;
-            monthAgg.set(r.month, prev);
+            agg.set(tk, prev);
           }
         }
-        const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
+        const actualData = [...agg.values()].sort((a,b) => a.month.localeCompare(b.month));
         if (!actualData.length) { hideLoading(); showToast('No actual data found for current filters', 'error'); return; }
 
         const params = getConfigParams();
-        const results = runForecastEngine(actualData, params, 18);
+        // Weekly: ~78 weeks for 18 months. Monthly: 18.
+        const horizon = state.isWeekly ? 78 : 18;
+        const results = runForecastEngine(actualData, params, horizon);
         const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
 
         // Store as preview only — not yet saved
@@ -1456,12 +1488,21 @@ function getDashboardRows() {
   const filtered = getFilteredRows();
   const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
   const statResults = state.forecastResults[fcKey] || [];
-  const statMap = new Map(statResults.map(r => [r.month, r.statValue]));
   const overridePrefix = fcKey + '|';
 
   // Build weekly-level rows if data is weekly
   if (state.isWeekly) {
-    // Aggregate by timeKey (YYYY-MM-WN)
+    // Weekly stat forecast map (results may be weekly keys like YYYY-MM-WN)
+    const weekStatMap = new Map(statResults.map(r => [r.month, r.statValue]));
+
+    // Roll up weekly stat forecasts to monthly
+    const monthlyStatMap = new Map();
+    for (const [k, v] of weekStatMap) {
+      const monthKey = k.includes('-W') ? k.split('-W')[0] + '-15' : k;
+      monthlyStatMap.set(monthKey, (monthlyStatMap.get(monthKey) || 0) + v);
+    }
+
+    // Aggregate actuals and existing forecasts by timeKey
     const weekActualMap = new Map(), weekFcstMap = new Map();
     for (const r of filtered) {
       const tk = timeKey(r);
@@ -1474,8 +1515,8 @@ function getDashboardRows() {
     }
 
     // Build monthly aggregated rows with weekRows for drill-down
-    const monthAgg = new Map(); // monthKey => { actuals, fcst, weekRows[] }
-    const allWeekKeys = new Set([...weekActualMap.keys(), ...weekFcstMap.keys()]);
+    const monthAgg = new Map();
+    const allWeekKeys = new Set([...weekActualMap.keys(), ...weekFcstMap.keys(), ...weekStatMap.keys()]);
 
     for (const tk of allWeekKeys) {
       const monthKey = tk.includes('-W') ? tk.split('-W')[0] + '-15' : tk;
@@ -1483,29 +1524,30 @@ function getDashboardRows() {
       const ma = monthAgg.get(monthKey);
       const wa = weekActualMap.get(tk);
       const wf = weekFcstMap.get(tk);
+      const ws = weekStatMap.get(tk);
       if (wa) { ma.pos += wa.pos; ma.invoice += wa.invoice; ma.order += wa.order; ma.hasActuals = true; }
       if (wf != null) { ma.fcst += wf; ma.hasFcst = true; }
-      // Store week detail
       ma.weekRows.push({
         timeKey: tk, posCases: wa?wa.pos:null, invoiceCases: wa?wa.invoice:null,
-        orderCases: wa?wa.order:null, existingForecast: wf??null, isHistorical: !!wa
+        orderCases: wa?wa.order:null, existingForecast: wf??null,
+        statForecast: ws??null, isHistorical: !!wa
       });
     }
 
-    // Also add stat forecast months to monthAgg
-    for (const [m, v] of statMap) {
+    // Also add monthly stat forecast keys
+    for (const [m] of monthlyStatMap) {
       if (!monthAgg.has(m)) monthAgg.set(m, { pos: 0, invoice: 0, order: 0, fcst: 0, hasFcst: false, hasActuals: false, weekRows: [] });
     }
 
-    // Sort week rows within each month
     monthAgg.forEach(ma => ma.weekRows.sort((a,b) => a.timeKey.localeCompare(b.timeKey)));
 
-    const allMonths = [...monthAgg.keys(), ...statMap.keys()];
+    const allMonths = [...monthAgg.keys(), ...monthlyStatMap.keys()];
     const uniqueMonths = [...new Set(allMonths)].sort();
 
     const result = uniqueMonths.map(month => {
       const ma = monthAgg.get(month);
-      const stat = statMap.get(month);
+      const stat = monthlyStatMap.get(month) ?? null;
+      const roundedStat = stat != null ? Math.round(stat * 100) / 100 : null;
       const ov = state.overrides[overridePrefix + month];
       const isHistorical = ma ? ma.hasActuals : false;
       const existingForecast = (ma && ma.hasFcst) ? ma.fcst : null;
@@ -1513,8 +1555,8 @@ function getDashboardRows() {
         month, posCases: (ma && ma.hasActuals) ? ma.pos : null,
         invoiceCases: (ma && ma.hasActuals) ? ma.invoice : null,
         orderCases: (ma && ma.hasActuals) ? ma.order : null,
-        existingForecast, statForecast: stat??null,
-        overrideVal: ov??null, finalValue: ov??stat??existingForecast??null,
+        existingForecast, statForecast: roundedStat,
+        overrideVal: ov??null, finalValue: ov??roundedStat??existingForecast??null,
         isHistorical, weekRows: ma ? ma.weekRows : []
       };
     });
@@ -1525,6 +1567,7 @@ function getDashboardRows() {
   }
 
   // Monthly data (original logic)
+  const statMap = new Map(statResults.map(r => [r.month, r.statValue]));
   const actualMap = new Map(), existingFcstMap = new Map();
   for (const r of filtered) {
     const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
@@ -1586,7 +1629,7 @@ function renderChart(rows) {
     for (const r of rows) {
       if (r.weekRows && r.weekRows.length > 0) {
         for (const w of r.weekRows) {
-          chartRows.push({ ...w, statForecast: null, overrideVal: null, finalValue: null, month: w.timeKey });
+          chartRows.push({ ...w, overrideVal: null, finalValue: null, month: w.timeKey });
         }
       } else {
         chartRows.push(r);
