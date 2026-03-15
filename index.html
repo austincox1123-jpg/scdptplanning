@@ -327,6 +327,7 @@
                 <option value="consumption_rate">POS Consumption Rate</option>
                 <option value="linear_avg">Linear Average (Avg Weekly Run Rate)</option>
                 <option value="linear_slope">Linear Trend (Slope)</option>
+                <option value="holts">Holt's Linear Trend (Level + Trend)</option>
               </select>
             </div>
             <div>
@@ -460,9 +461,11 @@ const COLUMN_MAP = {
 };
 const REQUIRED = ['CUSTOMER_NAME', 'PRODUCTNUMBER', 'MONTH_NUMBER_OF_YEAR', 'YEAR'];
 
+function normalizeHeader(h) { return h.trim().toUpperCase().replace(/\s+/g, ' ').replace(/[^\x20-\x7E]/g, ''); }
+
 function mapRow(raw, headers) {
   const mapped = {};
-  for (const h of headers) { const key = COLUMN_MAP[h.trim().toUpperCase()]; if (key) mapped[key] = raw[h]; }
+  for (const h of headers) { const key = COLUMN_MAP[normalizeHeader(h)]; if (key) mapped[key] = raw[h]; }
   return mapped;
 }
 
@@ -475,8 +478,8 @@ function parseFile(buffer) {
     if (!rawData.length) return { success: false, rows: [], errors: ['Sheet is empty'], rowCount: 0 };
 
     const headers = Object.keys(rawData[0]);
-    const upperHeaders = headers.map(h => h.trim().toUpperCase());
-    const missing = REQUIRED.filter(c => !upperHeaders.includes(c));
+    const normalizedHeaders = headers.map(normalizeHeader);
+    const missing = REQUIRED.filter(c => !normalizedHeaders.includes(c));
     if (missing.length) return { success: false, rows: [], errors: ['Missing required columns: ' + missing.join(', ')], rowCount: 0 };
 
     const rows = [], errors = [];
@@ -520,7 +523,10 @@ function getWeights(win, profile) {
 
 function calcSeasonalIndices(data) {
   const totals = new Array(12).fill(0), counts = new Array(12).fill(0);
-  for (const p of data) { const mi = new Date(p.month).getMonth(); totals[mi] += p.value; counts[mi]++; }
+  for (const p of data) {
+    const moMatch = p.month.match(/^(\d{4})-(\d{2})/);
+    if (moMatch) { const mi = parseInt(moMatch[2]) - 1; totals[mi] += p.value; counts[mi]++; }
+  }
   const avg = data.reduce((s,p) => s + p.value, 0) / data.length;
   return Array.from({length:12}, (_, i) => counts[i] > 0 && avg > 0 ? (totals[i]/counts[i])/avg : 1);
 }
@@ -658,6 +664,7 @@ function runForecastEngine(actuals, params, horizon) {
     }
     case 'linear_avg': results = linearAverage(series, params, horizon); break;
     case 'linear_slope': results = linearSlope(series, params, horizon); break;
+    case 'holts': results = holtsLinearTrend(series, params, horizon); break;
     default: results = weightedMovingAverage(series, params, horizon);
   }
 
@@ -684,15 +691,23 @@ function linearAverage(actuals, params, horizon) {
   // Total volume over the lookback window
   const totalVol = recent.reduce((s,p) => s + p.value, 0);
 
-  // Total weeks in the lookback window
-  let totalWeeks = 0;
-  for (const p of recent) {
-    const d = new Date(p.month);
-    const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
-    totalWeeks += daysInMonth / 7;
+  // Calculate average weekly rate
+  let avgWeeklyRate;
+  if (state.isWeekly) {
+    // Each data point IS a week, so just average the values
+    avgWeeklyRate = totalVol / recent.length;
+  } else {
+    // Monthly: estimate total weeks from month lengths
+    let totalWeeks = 0;
+    for (const p of recent) {
+      const moMatch = p.month.match(/^(\d{4})-(\d{2})/);
+      if (moMatch) {
+        const daysInMonth = new Date(parseInt(moMatch[1]), parseInt(moMatch[2]), 0).getDate();
+        totalWeeks += daysInMonth / 7;
+      } else { totalWeeks += 4.33; }
+    }
+    avgWeeklyRate = totalWeeks > 0 ? totalVol / totalWeeks : 0;
   }
-
-  const avgWeeklyRate = totalWeeks > 0 ? totalVol / totalWeeks : 0;
 
   const results = [];
   const lastKey = sorted[sorted.length - 1].month;
@@ -739,6 +754,47 @@ function linearSlope(actuals, params, horizon) {
     const x = (n - 1) + i;
     const forecast = Math.max(0, Math.round((slope * x + intercept) * 100) / 100);
     results.push({ month: forecastMonth(lastKey, i), statValue: forecast });
+  }
+  return results;
+}
+
+// Holt's Linear Trend (Double Exponential Smoothing)
+// Captures both level and trend. Two parameters:
+//   alpha (0-1): level smoothing — how fast the level adapts
+//   beta (derived from alpha): trend smoothing
+// Forecast: level + trend * periods_ahead
+function holtsLinearTrend(actuals, params, horizon) {
+  if (actuals.length < 2) return [];
+  const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const alpha = params.alpha || 0.3;
+  const beta = Math.min(alpha * 0.5, 0.3); // trend smoothing, more conservative than level
+
+  // Initialize level and trend from first two values
+  let level = sorted[0].value;
+  let trend = sorted[1].value - sorted[0].value;
+
+  // Smooth through all actuals
+  for (let i = 1; i < sorted.length; i++) {
+    const prevLevel = level;
+    level = alpha * sorted[i].value + (1 - alpha) * (prevLevel + trend);
+    trend = beta * (level - prevLevel) + (1 - beta) * trend;
+  }
+
+  // Apply seasonal adjustment if enabled
+  let seasonal = null;
+  if (params.seasonality && sorted.length >= 12) seasonal = calcSeasonalIndices(sorted);
+
+  const results = [];
+  const lastKey = sorted[sorted.length - 1].month;
+  for (let i = 1; i <= horizon; i++) {
+    let fc = level + trend * i;
+    if (seasonal) {
+      const fk = forecastMonth(lastKey, i);
+      const moMatch = fk.match(/^(\d{4})-(\d{2})/);
+      if (moMatch) fc *= seasonal[parseInt(moMatch[2]) - 1];
+    }
+    fc = Math.max(0, Math.round(fc * 100) / 100);
+    results.push({ month: forecastMonth(lastKey, i), statValue: fc });
   }
   return results;
 }
@@ -909,7 +965,7 @@ function resetFilters() {
 function onConfigChange() {
   const method = document.getElementById('cfg-method').value;
   document.getElementById('weight-section').classList.toggle('hidden', method !== 'weighted_ma');
-  document.getElementById('alpha-section').classList.toggle('hidden', method !== 'exp_smoothing');
+  document.getElementById('alpha-section').classList.toggle('hidden', method !== 'exp_smoothing' && method !== 'holts');
 }
 
 function getConfigParams() {
@@ -1003,7 +1059,7 @@ function saveForecast() {
 // ============================================================
 // Find best method for a given set of actuals (returns {method, wmape} or null)
 function findBestMethodForData(actualData, baseParams) {
-  const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope'];
+  const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope', 'holts'];
   const hasPOS = actualData.some(r => (r.posCases || 0) > 0);
   if (hasPOS) methods.push('pos_lag', 'consumption_rate');
 
@@ -1122,8 +1178,7 @@ function findBestMethod() {
       const allActuals = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
 
       const baseParams = getConfigParams();
-      const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope'];
-      // Add POS methods only if POS data exists
+      const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope', 'holts'];
       if (state.hasPosData) { methods.push('pos_lag', 'consumption_rate'); }
 
       const methodLabels = {
@@ -1131,6 +1186,7 @@ function findBestMethod() {
         exp_smoothing: 'Exponential Smoothing',
         linear_avg: 'Linear Average',
         linear_slope: 'Linear Trend (Slope)',
+        holts: "Holt's Linear Trend",
         pos_lag: 'POS-to-Shipment Lag',
         consumption_rate: 'POS Consumption Rate',
       };
