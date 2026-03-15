@@ -433,8 +433,7 @@ const state = {
   overrides: {},
   hasPosData: false,
   excludedMonths: new Set(),  // set of "YYYY-MM-15" month keys to exclude from forecast
-  isWeekly: false,
-  hasUploadedWeeks: false,    // true only when upload file had MAX_WKS_PER_MONTH column with data       // true when data has WEEK_NUMBER_OF_MONTH
+  isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
   weeksMap: {},          // month string => maxWksPerMonth value from upload
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
@@ -696,40 +695,23 @@ function extractSeries(rows, source) {
 }
 
 function runForecastEngine(actuals, params, horizon) {
-  const wm = state.weeksMap;
-  // Only normalize by weeks if the UPLOAD FILE had MAX_WKS_PER_MONTH — not from the default editor
-  const shouldNormalizeWeeks = !state.isWeekly && state.hasUploadedWeeks;
-
+  // No weeks normalization — forecast engine works on raw values as-is.
+  // Weekly data: each point is one week. Monthly data: each point is one month.
   let series = extractSeries(actuals, params.source);
-
-  if (shouldNormalizeWeeks) {
-    series = series.map(p => {
-      const wks = wm[p.month] || 4;
-      return { month: p.month, value: p.value / wks };
-    });
-  }
 
   let results;
   switch (params.method) {
     case 'weighted_ma': results = weightedMovingAverage(series, params, horizon); break;
     case 'exp_smoothing': results = exponentialSmoothing(series, params, horizon); break;
     case 'pos_lag': {
-      let pos = extractSeries(actuals, 'pos');
-      let ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
-      if (shouldNormalizeWeeks) {
-        pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
-        ship = ship.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
-      }
+      const pos = extractSeries(actuals, 'pos');
+      const ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
       results = posToShipmentLag(pos, ship, 2, params.window, horizon);
       break;
     }
     case 'consumption_rate': {
-      let pos = extractSeries(actuals, 'pos');
-      let ord = extractSeries(actuals, 'order');
-      if (shouldNormalizeWeeks) {
-        pos = pos.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
-        ord = ord.map(p => ({ month: p.month, value: p.value / (wm[p.month] || 4) }));
-      }
+      const pos = extractSeries(actuals, 'pos');
+      const ord = extractSeries(actuals, 'order');
       results = consumptionRate(pos, ord, params.window, horizon);
       break;
     }
@@ -737,14 +719,6 @@ function runForecastEngine(actuals, params, horizon) {
     case 'linear_slope': results = linearSlope(series, params, horizon); break;
     case 'holts': results = holtsLinearTrend(series, params, horizon); break;
     default: results = weightedMovingAverage(series, params, horizon);
-  }
-
-  // Scale back up only if we normalized in the first place
-  if (shouldNormalizeWeeks && results.length) {
-    results = results.map(r => {
-      const wks = wm[r.month] || 4;
-      return { month: r.month, statValue: Math.round(r.statValue * wks * 100) / 100 };
-    });
   }
 
   // Apply MOQ rounding if set
@@ -971,14 +945,11 @@ function loadData(rows, fileName) {
 
   // Initialize weeks-per-month from upload data or default 4-4-5
   state.weeksPerMonthConfig = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5]; // index 0=Jan
-  // Only flag hasUploadedWeeks if the file actually had MAX_WKS_PER_MONTH values
-  state.hasUploadedWeeks = rows.some(r => r.maxWksPerMonth != null);
-  if (state.hasUploadedWeeks) {
-    for (const r of rows) {
-      if (r.maxWksPerMonth != null) {
-        const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
-        if (moMatch) state.weeksPerMonthConfig[parseInt(moMatch[2]) - 1] = r.maxWksPerMonth;
-      }
+  // If upload had MAX_WKS_PER_MONTH, seed the config from it
+  for (const r of rows) {
+    if (r.maxWksPerMonth != null) {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (moMatch) state.weeksPerMonthConfig[parseInt(moMatch[2]) - 1] = r.maxWksPerMonth;
     }
   }
   buildWeeksMap();
@@ -1298,7 +1269,9 @@ function runForecast() {
         const actualData = [...agg.values()].sort((a,b) => a.month.localeCompare(b.month));
         if (!actualData.length) { hideLoading(); showToast('No actual data found for current filters', 'error'); return; }
 
+        // Debug: log what the engine sees
         const params = getConfigParams();
+        console.log('Forecast input (' + params.source + ', ' + actualData.length + ' periods):', actualData.map(a => a.month + ': ' + (params.source === 'pos' ? a.posCases : params.source === 'invoice' ? a.invoiceCases : params.source === 'order' ? a.orderCases : 'blended')).join(', '));
         // Weekly: ~78 weeks for 18 months. Monthly: 18.
         const horizon = state.isWeekly ? 78 : 18;
         const results = runForecastEngine(actualData, params, horizon);
