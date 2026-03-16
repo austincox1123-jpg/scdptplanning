@@ -1958,7 +1958,7 @@ function getDashboardRows() {
     const monthlyExistingFcst = new Map();
     for (const r of filtered) {
       const tk = timeKey(r);
-      const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
+      const hasActuals = r.posCases != null || r.invoiceCases != null || r.orderCases != null;
       if (hasActuals) {
         const prev = weekActualMap.get(tk) || { pos: 0, invoice: 0, order: 0 };
         weekActualMap.set(tk, { pos: prev.pos+(r.posCases||0), invoice: prev.invoice+(r.invoiceCases||0), order: prev.order+(r.orderCases||0) });
@@ -2041,7 +2041,7 @@ function getDashboardRows() {
   const statMap = new Map(statResults.map(r => [r.month, r.statValue]));
   const actualMap = new Map(), existingFcstMap = new Map();
   for (const r of filtered) {
-    const hasActuals = (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0;
+    const hasActuals = r.posCases != null || r.invoiceCases != null || r.orderCases != null;
     if (hasActuals) {
       const prev = actualMap.get(r.month) || { pos: 0, invoice: 0, order: 0 };
       actualMap.set(r.month, { pos: prev.pos+(r.posCases||0), invoice: prev.invoice+(r.invoiceCases||0), order: prev.order+(r.orderCases||0) });
