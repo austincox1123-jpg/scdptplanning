@@ -117,11 +117,14 @@
     .list-disc { list-style-type: disc; padding-left: 20px; }
     /* Saved forecasts panel */
     .saved-panel { margin-top: 16px; }
+    .saved-list-scroll { max-height: 228px; overflow-y: auto; }
     .saved-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px; font-size: 12px; cursor: pointer; transition: background 0.1s; }
     .saved-item:hover { background: #f9fafb; }
     .saved-item.active { border-color: #2563eb; background: #eff6ff; }
     .saved-item .saved-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #374151; }
     .saved-item .saved-months { font-size: 11px; color: #9ca3af; margin-left: 8px; white-space: nowrap; }
+    .saved-delete { background: none; border: none; color: #d1d5db; font-size: 16px; padding: 0 4px; margin-left: 4px; cursor: pointer; line-height: 1; }
+    .saved-delete:hover { color: #ef4444; }
     .saved-count { font-size: 11px; color: #6b7280; margin-bottom: 8px; }
     .btn-sm { padding: 6px 12px; font-size: 12px; border-radius: 6px; }
     .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; font-weight: 500; }
@@ -303,7 +306,7 @@
               <div class="backtest-grid-container mt-4">
                 <table class="data-grid">
                   <thead><tr>
-                    <th>Month</th><th class="num">Actual</th><th class="num">Lag2 Forecast</th><th class="num">Error</th><th class="num">Abs % Error</th>
+                    <th>Month</th><th class="num">Actual</th><th class="num">Lag2 Forecast</th><th class="num">Net Error</th><th class="num">Abs Error</th><th class="num">Abs % Error</th>
                   </tr></thead>
                   <tbody id="backtest-body"></tbody>
                 </table>
@@ -319,6 +322,22 @@
                   <th>Month</th><th class="num">Wks</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Variance</th><th class="num">Override</th><th class="num">Final</th>
                 </tr></thead>
                 <tbody id="grid-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Top Items -->
+          <div class="card mt-4 p-6" id="top-items-section">
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Top Items — Last 3 Months</h2>
+            <div class="grid-container" style="max-height:350px">
+              <table class="data-grid">
+                <thead><tr>
+                  <th style="min-width:100px">Customer</th>
+                  <th style="min-width:100px">Product</th>
+                  <th class="num top-sort" data-col="orders" style="cursor:pointer">Orders <span id="sort-orders-icon">&#9660;</span></th>
+                  <th class="num top-sort" data-col="pos" style="cursor:pointer">POS <span id="sort-pos-icon"></span></th>
+                </tr></thead>
+                <tbody id="top-items-body"></tbody>
               </table>
             </div>
           </div>
@@ -398,7 +417,7 @@
           <div class="card p-4 saved-panel">
             <h2 class="text-sm font-semibold text-gray-700 mb-2">Saved Forecasts</h2>
             <p class="saved-count" id="saved-count">No forecasts saved yet</p>
-            <div id="saved-list"></div>
+            <div id="saved-list" class="saved-list-scroll"></div>
           </div>
 
           <!-- Weeks per Month Editor -->
@@ -1036,6 +1055,9 @@ function renderExcludeMonths() {
       state.excludedMonths.add(m);
       chip.classList.add('excluded');
     }
+    // Re-render chart immediately so excluded months disappear from the trend
+    invalidateCache();
+    renderDashboard();
   };
 }
 
@@ -1603,12 +1625,37 @@ function renderSavedPanel() {
     const div = document.createElement('div');
     div.className = 'saved-item' + (key === currentKey ? ' active' : '');
     div.innerHTML = '<span class="saved-label"><strong>' + sanitize(cust) + '</strong> / ' + sanitize(prod) +
-      (hasOverrides ? ' *' : '') + '</span><span class="saved-months">' + months + ' mo</span>';
-    div.onclick = () => jumpToForecast(cust, prod);
+      (hasOverrides ? ' *' : '') + '</span><span class="saved-months">' + months + ' mo</span>' +
+      '<button class="saved-delete" title="Delete forecast" data-key="' + sanitize(key) + '">&times;</button>';
+    div.onclick = (e) => { if (!e.target.classList.contains('saved-delete')) jumpToForecast(cust, prod); };
     frag.appendChild(div);
   }
   list.textContent = '';
   list.appendChild(frag);
+
+  // Delete button delegation
+  list.onclick = function(e) {
+    const btn = e.target.closest('.saved-delete');
+    if (!btn) return;
+    e.stopPropagation();
+    deleteForecast(btn.dataset.key);
+  };
+}
+
+function deleteForecast(key) {
+  // Remove saved forecast
+  delete state.skuForecasts[key];
+  // Remove from forecastResults so grid reverts to existing forecast
+  delete state.forecastResults[key];
+  // Remove any overrides for this key
+  const prefix = key + '|';
+  for (const k of Object.keys(state.overrides)) {
+    if (k.startsWith(prefix)) delete state.overrides[k];
+  }
+  invalidateCache();
+  renderDashboard();
+  renderSavedPanel();
+  showToast('Forecast deleted — reverted to existing forecast', 'success');
 }
 
 function jumpToForecast(customer, product) {
@@ -1699,9 +1746,11 @@ function runBacktest() {
       allErrors.push({ month: targetMonth, actual, forecast: fcValue, error });
 
       // Roll up for the detail table (aggregate across SKUs per month)
-      const mr = monthRollup.get(targetMonth) || { actual: 0, forecast: 0 };
+      const mr = monthRollup.get(targetMonth) || { actual: 0, forecast: 0, absError: 0, signedError: 0 };
       mr.actual += actual;
       mr.forecast += fcValue;
+      mr.absError += Math.abs(error);
+      mr.signedError += error;
       monthRollup.set(targetMonth, mr);
       skuHasResults = true;
     }
@@ -1726,11 +1775,11 @@ function runBacktest() {
 
   const accuracy = 1 - wmape;
 
-  // Build detail rows from month rollup (aggregated across SKUs per month)
+  // Build detail rows from month rollup — use tracked absError (sum of |individual SKU errors|)
+  // so the detail table is consistent with the summary WMAPE
   const results = [...monthRollup.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([month, mr]) => {
-    const error = mr.forecast - mr.actual;
-    const absPctError = mr.actual > 0 ? Math.abs(error) / mr.actual : 0;
-    return { month, actual: mr.actual, forecast: mr.forecast, error, absPctError };
+    const absPctError = mr.actual > 0 ? mr.absError / mr.actual : 0;
+    return { month, actual: mr.actual, forecast: mr.forecast, error: mr.signedError, absError: mr.absError, absPctError };
   });
 
   return { results, wmape, bias, mape, accuracy, monthsBacktested: results.length, skusTested };
@@ -1785,6 +1834,7 @@ function renderAccuracyFromResults(backtest) {
       '<td class="num">' + fmt(r.actual) + '</td>' +
       '<td class="num">' + fmt(r.forecast) + '</td>' +
       '<td class="num" style="' + errColor + '">' + (r.error > 0 ? '+' : '') + fmt(r.error) + '</td>' +
+      '<td class="num">' + fmt(r.absError) + '</td>' +
       '<td class="num">' + (r.absPctError * 100).toFixed(1) + '%</td>';
     frag.appendChild(tr);
   }
@@ -1991,6 +2041,7 @@ function renderDashboard() {
     renderChart(rows);
     renderAccuracyFromResults(backtest);
     renderGrid(rows);
+    renderTopItems();
     renderSavedPanel();
   } catch (e) {
     showToast('Render error: ' + e.message, 'error');
@@ -2020,6 +2071,9 @@ function renderChart(rows) {
       }
     }
   }
+
+  // Filter out excluded months so the chart shows the trend without them
+  chartRows = chartRows.filter(r => !state.excludedMonths.has(r.month));
 
   const labels = chartRows.map(r => fmtTimeKey(r.month));
   const datasets = [
@@ -2158,6 +2212,72 @@ function renderGrid(rows) {
     weekRows.forEach(r => r.classList.toggle('hidden'));
   };
 }
+
+// ============================================================
+// TOP ITEMS — Last 3 included months, ranked by Orders or POS
+// ============================================================
+let topItemsSort = { col: 'orders', dir: 'desc' }; // default: orders descending
+
+function renderTopItems() {
+  const tbody = document.getElementById('top-items-body');
+
+  // Find the last 3 non-excluded months with actual data
+  const allHistMonths = [...new Set(
+    state.parsedRows
+      .filter(r => !state.excludedMonths.has(r.month) && ((r.posCases||0) > 0 || (r.orderCases||0) > 0))
+      .map(r => r.month)
+  )].sort();
+  const last3 = allHistMonths.slice(-3);
+  if (last3.length === 0) { tbody.innerHTML = '<tr><td colspan="4" class="text-gray-400 text-sm" style="padding:12px">No data</td></tr>'; return; }
+
+  // Aggregate by customer|product for those 3 months
+  const items = new Map();
+  for (const r of state.parsedRows) {
+    if (!last3.includes(r.month)) continue;
+    if (state.excludedMonths.has(r.month)) continue;
+    const ck = r.customerName + '|' + r.productNumber;
+    const prev = items.get(ck) || { customer: r.customerName, product: r.productNumber, productName: r.productName, orders: 0, pos: 0 };
+    prev.orders += r.orderCases || 0;
+    prev.pos += r.posCases || 0;
+    items.set(ck, prev);
+  }
+
+  let sorted = [...items.values()];
+  const col = topItemsSort.col;
+  const mult = topItemsSort.dir === 'desc' ? -1 : 1;
+  sorted.sort((a, b) => (a[col] - b[col]) * mult);
+
+  const frag = document.createDocumentFragment();
+  for (const item of sorted) {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td>' + sanitize(item.customer) + '</td>' +
+      '<td>' + sanitize(item.productName || item.product) + '</td>' +
+      '<td class="num">' + fmt(item.orders) + '</td>' +
+      '<td class="num">' + fmt(item.pos) + '</td>';
+    frag.appendChild(tr);
+  }
+  tbody.textContent = '';
+  tbody.appendChild(frag);
+
+  // Update sort icons
+  document.getElementById('sort-orders-icon').innerHTML = topItemsSort.col === 'orders' ? (topItemsSort.dir === 'desc' ? '&#9660;' : '&#9650;') : '';
+  document.getElementById('sort-pos-icon').innerHTML = topItemsSort.col === 'pos' ? (topItemsSort.dir === 'desc' ? '&#9660;' : '&#9650;') : '';
+}
+
+// Sort click handler — attach once
+document.addEventListener('click', function(e) {
+  const th = e.target.closest('.top-sort');
+  if (!th) return;
+  const col = th.dataset.col;
+  if (topItemsSort.col === col) {
+    topItemsSort.dir = topItemsSort.dir === 'desc' ? 'asc' : 'desc';
+  } else {
+    topItemsSort.col = col;
+    topItemsSort.dir = 'desc';
+  }
+  renderTopItems();
+});
 
 // ============================================================
 // EXPORT
