@@ -197,6 +197,17 @@
     .breakdown-stats { text-align: right; min-width: 80px; flex-shrink: 0; }
     .breakdown-val { font-size: 13px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; }
     .breakdown-pct { font-size: 11px; font-weight: 600; }
+    /* Attribution treemap */
+    .attr-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .attr-block { border-radius: 6px; padding: 14px 16px; cursor: pointer; position: relative; overflow: hidden; min-width: 100px; transition: opacity 0.15s; }
+    .attr-block:hover { opacity: 0.85; }
+    .attr-name { font-size: 13px; font-weight: 600; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .attr-vol { font-size: 18px; font-weight: 700; color: #fff; margin-top: 2px; font-variant-numeric: tabular-nums; }
+    .attr-share { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 1px; }
+    .attr-pct { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.9); margin-top: 2px; }
+    .attr-breadcrumb { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }
+    .attr-breadcrumb span { color: #2563eb; cursor: pointer; text-decoration: underline; }
+    .attr-breadcrumb span.current { color: #374151; cursor: default; text-decoration: none; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -518,6 +529,16 @@
             <div id="analytics-by-type"></div>
           </div>
         </div>
+      </div>
+
+      <!-- Item Attribution: Brand > Type > Formation -->
+      <div class="card p-6 mt-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-sm font-semibold text-gray-700">Item Attribution — Brand &gt; Type &gt; Formation</h2>
+          <div class="text-xs text-gray-400" id="attribution-breadcrumb"></div>
+        </div>
+        <p class="text-xs text-gray-500 mb-4">Click a segment to drill down. Shows YTD order volume share and vs PY change.</p>
+        <div id="attribution-container"></div>
       </div>
     </div>
   </div>
@@ -2670,6 +2691,7 @@ function renderAnalytics() {
   renderBreakdown('analytics-by-customer', data.byCustomer);
   renderBreakdown('analytics-by-brand', data.byBrand);
   renderBreakdown('analytics-by-type', data.byType);
+  renderAttribution();
 }
 
 function renderAnalyticsExcludeMonths() {
@@ -2777,6 +2799,106 @@ function renderBreakdown(containerId, items) {
       '</span>' +
     '</div>';
   }).join('');
+}
+
+// ============================================================
+// ITEM ATTRIBUTION — Brand > Type > Formation drill-down
+// ============================================================
+const ATTR_COLORS = ['#1e3a5f','#2563eb','#3b82f6','#60a5fa','#93c5fd','#7c3aed','#8b5cf6','#a78bfa','#0d9488','#14b8a6','#2dd4bf','#d97706','#f59e0b','#fbbf24','#dc2626','#ef4444'];
+let attrDrillState = { level: 'brand', brand: null, type: null };
+
+function computeAttribution() {
+  const rows = state.parsedRows;
+  let maxYear = 0;
+  for (const r of rows) {
+    if ((r.orderCases || 0) > 0) {
+      const m = r.month.match(/^(\d{4})/);
+      if (m && parseInt(m[1]) > maxYear) maxYear = parseInt(m[1]);
+    }
+  }
+  const cy = maxYear, py = cy - 1;
+  const data = { cy: new Map(), py: new Map() };
+  for (const r of rows) {
+    const m = r.month.match(/^(\d{4})/);
+    if (!m) continue;
+    const yr = parseInt(m[1]);
+    if (yr !== cy && yr !== py) continue;
+    if (state.excludedMonths.has(r.month)) continue;
+    if ((r.orderCases || 0) <= 0 && r.posCases == null && r.invoiceCases == null) continue;
+    const key = (r.brand || 'Unknown') + '|' + (r.type || 'Unknown') + '|' + (r.formation || 'Unknown');
+    const target = yr === cy ? data.cy : data.py;
+    target.set(key, (target.get(key) || 0) + (r.orderCases || 0));
+  }
+  return { cy: data.cy, py: data.py, year: cy };
+}
+
+function renderAttribution() {
+  const raw = computeAttribution();
+  const container = document.getElementById('attribution-container');
+  const breadcrumb = document.getElementById('attribution-breadcrumb');
+  const s = attrDrillState;
+
+  const cyAgg = new Map(), pyAgg = new Map();
+  for (const [key, vol] of raw.cy) {
+    const [brand, type, formation] = key.split('|');
+    if (s.level === 'type' && brand !== s.brand) continue;
+    if (s.level === 'formation' && (brand !== s.brand || type !== s.type)) continue;
+    const groupKey = s.level === 'brand' ? brand : s.level === 'type' ? type : formation;
+    cyAgg.set(groupKey, (cyAgg.get(groupKey) || 0) + vol);
+  }
+  for (const [key, vol] of raw.py) {
+    const [brand, type, formation] = key.split('|');
+    if (s.level === 'type' && brand !== s.brand) continue;
+    if (s.level === 'formation' && (brand !== s.brand || type !== s.type)) continue;
+    const groupKey = s.level === 'brand' ? brand : s.level === 'type' ? type : formation;
+    pyAgg.set(groupKey, (pyAgg.get(groupKey) || 0) + vol);
+  }
+
+  const totalCY = [...cyAgg.values()].reduce((s, v) => s + v, 0);
+  const items = [...new Set([...cyAgg.keys(), ...pyAgg.keys()])].map(name => {
+    const cyVal = cyAgg.get(name) || 0;
+    const pyVal = pyAgg.get(name) || 0;
+    const pct = pyVal > 0 ? ((cyVal - pyVal) / pyVal * 100) : (cyVal > 0 ? 100 : 0);
+    const share = totalCY > 0 ? cyVal / totalCY * 100 : 0;
+    return { name, cy: cyVal, py: pyVal, pct, share };
+  }).sort((a, b) => b.cy - a.cy);
+
+  // Breadcrumb
+  let bc = '<span class="attr-breadcrumb">';
+  bc += '<span onclick="attrDrillState={level:\'brand\',brand:null,type:null};renderAttribution()">All Brands</span>';
+  if (s.level === 'type' || s.level === 'formation') {
+    bc += ' &rsaquo; <span onclick="attrDrillState={level:\'type\',brand:\'' + sanitize(s.brand) + '\',type:null};renderAttribution()">' + sanitize(s.brand) + '</span>';
+  }
+  if (s.level === 'formation') {
+    bc += ' &rsaquo; <span class="current">' + sanitize(s.type) + '</span>';
+  }
+  bc += '</span>';
+  breadcrumb.innerHTML = bc;
+
+  if (!items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No data at this level</div>'; return; }
+
+  container.innerHTML = '<div class="attr-grid">' + items.map((item, i) => {
+    const color = ATTR_COLORS[i % ATTR_COLORS.length];
+    const widthPct = Math.max(8, item.share);
+    const arrow = item.pct > 0.5 ? '\u25B2' : item.pct < -0.5 ? '\u25BC' : '';
+    const canDrill = s.level !== 'formation';
+    const clickAttr = canDrill ? ' onclick="attrDrill(\'' + sanitize(item.name) + '\')"' : '';
+    return '<div class="attr-block" style="background:' + color + '; flex-basis:calc(' + widthPct + '% - 6px); flex-grow:1"' + clickAttr + '>' +
+      '<div class="attr-name">' + sanitize(item.name) + '</div>' +
+      '<div class="attr-vol">' + fmt(item.cy) + '</div>' +
+      '<div class="attr-share">' + item.share.toFixed(1) + '% share</div>' +
+      '<div class="attr-pct">' + arrow + ' ' + Math.abs(item.pct).toFixed(1) + '% vs PY</div>' +
+    '</div>';
+  }).join('') + '</div>';
+}
+
+function attrDrill(name) {
+  if (attrDrillState.level === 'brand') {
+    attrDrillState = { level: 'type', brand: name, type: null };
+  } else if (attrDrillState.level === 'type') {
+    attrDrillState = { level: 'formation', brand: attrDrillState.brand, type: name };
+  }
+  renderAttribution();
 }
 
 // ============================================================
