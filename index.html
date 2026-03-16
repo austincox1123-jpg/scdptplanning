@@ -458,6 +458,7 @@ const state = {
   isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
   weeksMap: {},          // month string => maxWksPerMonth value from upload
+  selectedSku: null,     // {customer, product} — top items highlight/drill, doesn't affect grid
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
 };
 let chart = null;
@@ -1230,6 +1231,7 @@ function onFilterChange() {
   state.filters.type = document.getElementById('filter-type').value;
   state.filters.formation = document.getElementById('filter-formation').value;
   state.filters.product = document.getElementById('filter-product').value;
+  state.selectedSku = null; // clear drill selection when filters change
 
   // Re-cascade: downstream filters may need to update
   updateCascadingFilters();
@@ -1242,6 +1244,7 @@ function onFilterChange() {
 
 function resetFilters() {
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
+  state.selectedSku = null;
   updateCascadingFilters();
   invalidateCache();
   renderDashboard();
@@ -1662,7 +1665,8 @@ function deleteForecast(key) {
 }
 
 function jumpToForecast(customer, product) {
-  // Set filters to this specific combo
+  // Set filters to this specific combo (filters everything including grid)
+  state.selectedSku = null;
   state.filters.customer = customer;
   state.filters.product = product;
   state.filters.brand = '';
@@ -2028,22 +2032,43 @@ function getDashboardRows() {
 // ============================================================
 function renderDashboard() {
   try {
-    const rows = getDashboardRows();
+    // Grid always uses the filter-bar filters (ignores selectedSku)
+    const gridRows = getDashboardRows();
 
-    // Run backtest once and merge backtested stat values into historical rows
-    const backtest = runBacktest();
+    // Chart/accuracy: if a SKU is selected from top items, temporarily
+    // narrow filters to that item, compute chart rows + backtest, then restore.
+    let chartRows, backtest;
+    if (state.selectedSku) {
+      const savedFilters = { ...state.filters };
+      state.filters.customer = state.selectedSku.customer;
+      state.filters.product = state.selectedSku.product;
+      invalidateCache();
+      chartRows = getDashboardRows();
+      backtest = runBacktest();
+      // Restore original filters
+      state.filters = savedFilters;
+      invalidateCache();
+    } else {
+      chartRows = gridRows;
+      backtest = runBacktest();
+    }
+
+    // Merge backtested stat values into chart rows
     const btMap = new Map();
     if (backtest) {
       for (const r of backtest.results) btMap.set(r.month, r.forecast);
     }
-    // Populate backtestForecast on historical rows so grid/chart can show it
-    for (const row of rows) {
+    for (const row of chartRows) {
+      row.backtestForecast = btMap.get(row.month) ?? null;
+    }
+    // Also populate backtest on grid rows so stat column shows them
+    for (const row of gridRows) {
       row.backtestForecast = btMap.get(row.month) ?? null;
     }
 
-    renderChart(rows);
+    renderChart(chartRows);
     renderAccuracyFromResults(backtest);
-    renderGrid(rows);
+    renderGrid(gridRows);
     renderTopItems();
     renderSavedPanel();
   } catch (e) {
@@ -2249,11 +2274,10 @@ let topItemsSort = { col: 'orders', dir: 'desc' }; // default: orders descending
 
 function renderTopItems() {
   const tbody = document.getElementById('top-items-body');
-  const activeCustomer = state.filters.customer;
-  const activeProduct = state.filters.product;
+  const sel = state.selectedSku;
 
-  // Show "Back to All" when any filter is active
-  const hasFilters = activeCustomer || activeProduct || state.filters.brand || state.filters.type || state.filters.formation;
+  // Show "Back to All" when a SKU is selected or filters are active
+  const hasFilters = sel || state.filters.customer || state.filters.product || state.filters.brand || state.filters.type || state.filters.formation;
   document.getElementById('back-to-all-btn').classList.toggle('hidden', !hasFilters);
 
   // Use filtered rows so top items respects current filter selections
@@ -2288,7 +2312,7 @@ function renderTopItems() {
   const frag = document.createDocumentFragment();
   for (const item of sorted) {
     const tr = document.createElement('tr');
-    const isActive = activeCustomer === item.customer && activeProduct === item.product;
+    const isActive = sel && sel.customer === item.customer && sel.product === item.product;
     tr.style.cursor = 'pointer';
     if (isActive) { tr.style.background = '#eff6ff'; tr.style.fontWeight = '600'; }
     tr.dataset.customer = item.customer;
@@ -2315,20 +2339,14 @@ function renderTopItems() {
   document.getElementById('sort-pos-icon').innerHTML = topItemsSort.col === 'pos' ? (topItemsSort.dir === 'desc' ? '&#9660;' : '&#9650;') : '';
 }
 
-// Drill into a specific customer/product from top items or grid
+// Drill into a specific customer/product from top items (chart/accuracy only, not grid)
 function drillToItem(customer, product) {
-  state.filters.customer = customer;
-  state.filters.product = product;
-  updateCascadingFilters();
-  renderExcludeMonths();
-
-  // Load saved forecast if one exists
-  const key = customer + '|' + product;
-  if (state.skuForecasts[key]) {
-    state.forecastResults[key] = state.skuForecasts[key];
+  // Toggle: clicking the same item again deselects it
+  if (state.selectedSku && state.selectedSku.customer === customer && state.selectedSku.product === product) {
+    state.selectedSku = null;
+  } else {
+    state.selectedSku = { customer, product };
   }
-
-  document.getElementById('save-forecast-btn').classList.add('hidden');
   invalidateCache();
   renderDashboard();
 }
