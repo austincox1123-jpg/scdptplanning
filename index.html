@@ -667,19 +667,12 @@ function weightedMovingAverage(actuals, params, horizon) {
   const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
   const win = Math.min(params.window, sorted.length);
   const weights = getWeights(win, params.weightProfile || 'equal');
-  let seasonal = null;
-  if (params.seasonality && sorted.length >= 12) seasonal = calcSeasonalIndices(sorted);
   const results = [], values = sorted.map(p => p.value);
   let recent = values.slice(-win);
   const lastKey = sorted[sorted.length-1].month;
   for (let i = 1; i <= horizon; i++) {
     let fc = 0;
     for (let j = 0; j < win; j++) fc += recent[recent.length - win + j] * weights[j];
-    if (seasonal) {
-      const fk = forecastMonth(lastKey, i);
-      const moMatch = fk.match(/^(\d{4})-(\d{2})/);
-      if (moMatch) fc *= seasonal[parseInt(moMatch[2]) - 1];
-    }
     fc = Math.round(fc);
     results.push({ month: forecastMonth(lastKey, i), statValue: fc });
     recent.push(fc);
@@ -802,6 +795,19 @@ function runForecastEngine(actuals, params, horizon) {
     default: results = weightedMovingAverage(series, params, horizon);
   }
 
+  // Apply seasonal indices — reproduces repeating patterns (e.g., bimonthly ordering).
+  // Computed from normalized series so all methods benefit uniformly.
+  if (params.seasonality && series.length >= 6) {
+    const seasonal = calcSeasonalIndices(series);
+    results = results.map(r => {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (moMatch) {
+        return { month: r.month, statValue: Math.round(r.statValue * seasonal[parseInt(moMatch[2]) - 1]) };
+      }
+      return r;
+    });
+  }
+
   // Denormalize: multiply each forecast month's weekly rate by its weeks
   if (!state.isWeekly) {
     results = results.map(r => ({
@@ -902,10 +908,6 @@ function holtsLinearTrend(actuals, params, horizon) {
     trend = beta * (level - prevLevel) + (1 - beta) * phi * trend;
   }
 
-  // Seasonal adjustment
-  let seasonal = null;
-  if (params.seasonality && sorted.length >= 12) seasonal = calcSeasonalIndices(sorted);
-
   const results = [];
   const lastKey = sorted[sorted.length - 1].month;
   for (let i = 1; i <= horizon; i++) {
@@ -913,11 +915,6 @@ function holtsLinearTrend(actuals, params, horizon) {
     let trendSum = 0;
     for (let j = 1; j <= i; j++) trendSum += Math.pow(phi, j);
     let fc = level + trend * trendSum;
-    if (seasonal) {
-      const fk = forecastMonth(lastKey, i);
-      const moMatch = fk.match(/^(\d{4})-(\d{2})/);
-      if (moMatch) fc *= seasonal[parseInt(moMatch[2]) - 1];
-    }
     fc = Math.max(0, Math.round(fc));
     results.push({ month: forecastMonth(lastKey, i), statValue: fc });
   }
