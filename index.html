@@ -142,7 +142,7 @@
     .weeks-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
     .weeks-grid .wk-cell { display: flex; align-items: center; gap: 4px; font-size: 11px; }
     .weeks-grid .wk-cell label { color: #6b7280; min-width: 28px; }
-    .weeks-grid .wk-cell input { width: 36px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; font-family: inherit; }
+    .weeks-grid .wk-cell input { width: 46px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; font-family: inherit; }
     .weeks-grid .wk-cell input:focus { outline: none; border-color: #2563eb; }
     .wk-cell.wk-five input { background: #fef3c7; }
     .week-row td { background: #f9fafb; font-size: 12px; color: #6b7280; }
@@ -986,21 +986,21 @@ function renderWeeksEditor() {
   const ed = document.getElementById('weeks-editor');
   const labels = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   ed.innerHTML = state.weeksPerMonthConfig.map((wks, i) => {
-    const isFive = wks === 5;
+    const isFive = wks >= 4.5 && wks <= 5.5;
     return '<div class="wk-cell' + (isFive ? ' wk-five' : '') + '">' +
       '<label>' + labels[i] + '</label>' +
-      '<input type="number" min="3" max="6" value="' + wks + '" data-month-idx="' + i + '">' +
+      '<input type="number" min="3" max="6" step="0.01" value="' + wks + '" data-month-idx="' + i + '">' +
       '</div>';
   }).join('');
 
   ed.onchange = function(e) {
     if (e.target.dataset.monthIdx != null) {
       const idx = parseInt(e.target.dataset.monthIdx);
-      const val = Math.max(3, Math.min(6, parseInt(e.target.value) || 4));
+      const val = Math.max(3, Math.min(6, Math.round((parseFloat(e.target.value) || 4) * 100) / 100));
       e.target.value = val;
       state.weeksPerMonthConfig[idx] = val;
-      // Highlight 5-week months
-      e.target.parentElement.classList.toggle('wk-five', val === 5);
+      // Highlight ~5-week months
+      e.target.parentElement.classList.toggle('wk-five', val >= 4.5 && val <= 5.5);
       buildWeeksMap();
       invalidateCache();
     }
@@ -1721,12 +1721,11 @@ function runBacktest() {
   return { results, wmape, bias, mape, accuracy, monthsBacktested: results.length };
 }
 
-function renderAccuracy() {
+function renderAccuracyFromResults(backtest) {
   const section = document.getElementById('accuracy-section');
   const metricsDiv = document.getElementById('accuracy-metrics');
   const backtestBody = document.getElementById('backtest-body');
 
-  const backtest = runBacktest();
   if (!backtest) {
     section.classList.add('hidden');
     return;
@@ -1962,8 +1961,20 @@ function getDashboardRows() {
 function renderDashboard() {
   try {
     const rows = getDashboardRows();
+
+    // Run backtest once and merge backtested stat values into historical rows
+    const backtest = runBacktest();
+    const btMap = new Map();
+    if (backtest) {
+      for (const r of backtest.results) btMap.set(r.month, r.forecast);
+    }
+    // Populate backtestForecast on historical rows so grid/chart can show it
+    for (const row of rows) {
+      row.backtestForecast = btMap.get(row.month) ?? null;
+    }
+
     renderChart(rows);
-    renderAccuracy();
+    renderAccuracyFromResults(backtest);
     renderGrid(rows);
     renderSavedPanel();
   } catch (e) {
@@ -2001,7 +2012,7 @@ function renderChart(rows) {
     { label: 'Invoice', data: chartRows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Orders', data: chartRows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Existing Fcst', data: chartRows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
-    { label: 'Stat Forecast', data: chartRows.map(r=>r.statForecast), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Stat Forecast', data: chartRows.map(r=>r.statForecast ?? r.backtestForecast ?? null), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Override', data: chartRows.map(r=>r.overrideVal), borderColor: '#22c55e', borderWidth: 0, pointRadius: chartRows.map(r=>r.overrideVal!=null?5:0), pointBackgroundColor: '#22c55e', spanGaps: false, showLine: false },
   ];
 
@@ -2028,9 +2039,11 @@ function renderChart(rows) {
 // ============================================================
 function buildGridRow(r, isWeekDetail) {
   const wks = state.weeksMap[r.month];
+  // Show stat forecast for future months, or backtested value for historical months
+  const displayStat = r.statForecast ?? r.backtestForecast ?? null;
   let varianceHtml = '';
-  if (r.statForecast != null && r.existingForecast != null) {
-    const v = r.statForecast - r.existingForecast;
+  if (displayStat != null && r.existingForecast != null) {
+    const v = displayStat - r.existingForecast;
     const cls = v > 0 ? 'variance-pos' : v < 0 ? 'variance-neg' : 'variance-zero';
     varianceHtml = '<td class="num ' + cls + '">' + (v > 0 ? '+' : '') + fmt(v) + '</td>';
   } else {
@@ -2038,13 +2051,15 @@ function buildGridRow(r, isWeekDetail) {
   }
   const label = isWeekDetail ? sanitize(fmtTimeKey(r.month)) : sanitize(r.month);
   const safeMonth = sanitize(r.month);
+  // Backtest values get a lighter style to distinguish from forward forecasts
+  const statStyle = r.backtestForecast != null && r.statForecast == null ? ' style="opacity:0.6"' : '';
   return '<td>' + label + '</td>' +
     '<td class="num" style="color:#9ca3af">' + (wks != null ? wks : '') + '</td>' +
     '<td class="num">' + fmt(r.posCases) + '</td>' +
     '<td class="num">' + fmt(r.invoiceCases) + '</td>' +
     '<td class="num">' + fmt(r.orderCases) + '</td>' +
     '<td class="num">' + fmt(r.existingForecast) + '</td>' +
-    '<td class="num stat-color">' + fmt(r.statForecast) + '</td>' +
+    '<td class="num stat-color"' + statStyle + '>' + fmt(displayStat) + '</td>' +
     varianceHtml +
     (r.isHistorical || isWeekDetail
       ? '<td class="num"></td>'
