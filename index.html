@@ -169,29 +169,34 @@
     .page-toggle { display: inline-flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; font-size: 13px; margin-left: 16px; }
     .page-toggle button { padding: 6px 16px; background: #fff; border: none; color: #6b7280; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500; }
     .page-toggle button.active { background: #2563eb; color: #fff; }
-    /* Analytics KPIs */
-    .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
-    @media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } }
-    .kpi-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; padding: 20px; border-left: 4px solid #2563eb; }
-    .kpi-card.kpi-momentum { border-left-color: #8b5cf6; }
-    .kpi-label { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
-    .kpi-value { font-size: 28px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; }
-    .kpi-change { font-size: 13px; font-weight: 600; margin-top: 4px; }
+    /* Analytics layout */
+    .analytics-layout { display: grid; grid-template-columns: 340px 1fr; gap: 24px; }
+    @media (max-width: 900px) { .analytics-layout { grid-template-columns: 1fr; } }
+    /* KPI cards — stacked left column */
+    .kpi-card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin-bottom: 16px; }
+    .kpi-card:last-child { margin-bottom: 0; }
+    .kpi-title { font-size: 12px; color: #6b7280; margin-bottom: 2px; }
+    .kpi-value { font-size: 32px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; line-height: 1.1; }
+    .kpi-chart { height: 90px; margin: 8px 0 4px; position: relative; }
+    .kpi-change { font-size: 12px; font-weight: 600; }
     .kpi-up { color: #16a34a; }
     .kpi-down { color: #dc2626; }
     .kpi-flat { color: #6b7280; }
-    .kpi-sparkline { height: 32px; margin-top: 8px; }
-    .kpi-sub { font-size: 11px; color: #9ca3af; margin-top: 2px; }
-    /* Analytics breakdowns */
-    .breakdown-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
-    @media (max-width: 1024px) { .breakdown-grid { grid-template-columns: 1fr; } }
-    .breakdown-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #f3f4f6; font-size: 13px; }
+    .kpi-sub { font-size: 11px; color: #9ca3af; }
+    .kpi-dots { display: flex; gap: 2px; margin-top: 2px; }
+    .kpi-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .kpi-dot-red { background: #ef4444; }
+    .kpi-dot-clear { background: transparent; }
+    /* Breakdown bars — right column */
+    .breakdown-item { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #f3f4f6; }
     .breakdown-item:last-child { border-bottom: none; }
-    .breakdown-bar-wrap { flex: 1; margin: 0 12px; height: 8px; background: #f3f4f6; border-radius: 4px; overflow: hidden; }
-    .breakdown-bar { height: 100%; border-radius: 4px; background: #2563eb; }
-    .breakdown-name { min-width: 90px; color: #374151; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .breakdown-value { min-width: 70px; text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; color: #111827; }
-    .breakdown-pct { min-width: 60px; text-align: right; font-size: 12px; font-weight: 600; }
+    .breakdown-name { width: 100px; font-size: 13px; color: #374151; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+    .breakdown-bars { flex: 1; margin: 0 12px; position: relative; height: 20px; }
+    .breakdown-bar-py { position: absolute; top: 0; left: 0; height: 20px; border-radius: 3px; background: #d1d5db; }
+    .breakdown-bar-cy { position: absolute; top: 0; left: 0; height: 20px; border-radius: 3px; background: #374151; }
+    .breakdown-stats { text-align: right; min-width: 80px; flex-shrink: 0; }
+    .breakdown-val { font-size: 13px; font-weight: 700; color: #111827; font-variant-numeric: tabular-nums; }
+    .breakdown-pct { font-size: 11px; font-weight: 600; }
   </style>
 </head>
 <body>
@@ -486,31 +491,32 @@
     </nav>
 
     <div class="container py-6">
-      <!-- KPI Cards -->
-      <div class="kpi-grid" id="analytics-kpis"></div>
-
-      <!-- CY vs PY + Forecast Line Chart -->
-      <div class="card p-6 mt-6">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-sm font-semibold text-gray-700">Monthly Trend — Current Year vs Prior Year</h2>
-          <div class="text-xs text-gray-400" id="analytics-period-label"></div>
+      <!-- Month Exclusion -->
+      <div class="card p-4 mb-6">
+        <div class="flex items-center gap-4">
+          <label class="label" style="margin-bottom:0; white-space:nowrap">Exclude Months</label>
+          <div class="exclude-grid" id="analytics-exclude-months"></div>
         </div>
-        <div style="height:350px; position:relative;"><canvas id="analytics-trend-chart"></canvas></div>
       </div>
 
-      <!-- Breakdowns Row -->
-      <div class="breakdown-grid mt-6">
-        <div class="card p-6">
-          <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders by Customer — vs PY</h2>
-          <div id="analytics-by-customer"></div>
-        </div>
-        <div class="card p-6">
-          <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders by Brand — vs PY</h2>
-          <div id="analytics-by-brand"></div>
-        </div>
-        <div class="card p-6">
-          <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders by Type — vs PY</h2>
-          <div id="analytics-by-type"></div>
+      <div class="analytics-layout">
+        <!-- Left: Stacked KPI cards -->
+        <div class="analytics-left" id="analytics-kpis"></div>
+
+        <!-- Right: Breakdown bars -->
+        <div class="analytics-right">
+          <div class="card p-6 mb-4">
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders | Customer vs PY</h2>
+            <div id="analytics-by-customer"></div>
+          </div>
+          <div class="card p-6 mb-4">
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders | Brand vs PY</h2>
+            <div id="analytics-by-brand"></div>
+          </div>
+          <div class="card p-6">
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders | Type vs PY</h2>
+            <div id="analytics-by-type"></div>
+          </div>
         </div>
       </div>
     </div>
@@ -2506,8 +2512,7 @@ document.addEventListener('click', function(e) {
 // ============================================================
 // ANALYTICS DASHBOARD
 // ============================================================
-let analyticsTrendChart = null;
-let kpiSparklines = [null, null, null, null];
+let kpiSparklines = [null, null, null];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function computeAnalyticsData() {
@@ -2541,6 +2546,7 @@ function computeAnalyticsData() {
     if (!moMatch) continue;
     const yr = parseInt(moMatch[1]);
     const mi = parseInt(moMatch[2]) - 1;
+    if (state.excludedMonths.has(r.month)) continue;
 
     if (yr === cy) {
       const hasActual = (r.orderCases || 0) > 0 || (r.posCases || 0) > 0 || (r.invoiceCases || 0) > 0;
@@ -2645,9 +2651,9 @@ function computeAnalyticsData() {
   return {
     cy, py, throughMonth,
     kpis: {
-      orders: { cy: ordersYTD_CY, py: ordersYTD_PY, pct: pctChg(ordersYTD_CY, ordersYTD_PY), sparkline: cyMonthly.orders },
-      pos: { cy: posYTD_CY, py: posYTD_PY, pct: pctChg(posYTD_CY, posYTD_PY), sparkline: cyMonthly.pos },
-      invoice: { cy: invoiceYTD_CY, py: invoiceYTD_PY, pct: pctChg(invoiceYTD_CY, invoiceYTD_PY), sparkline: cyMonthly.invoice },
+      orders: { cy: ordersYTD_CY, py: ordersYTD_PY, pct: pctChg(ordersYTD_CY, ordersYTD_PY), sparkline: cyMonthly.orders, pySparkline: pyMonthly.orders },
+      pos: { cy: posYTD_CY, py: posYTD_PY, pct: pctChg(posYTD_CY, posYTD_PY), sparkline: cyMonthly.pos, pySparkline: pyMonthly.pos },
+      invoice: { cy: invoiceYTD_CY, py: invoiceYTD_PY, pct: pctChg(invoiceYTD_CY, invoiceYTD_PY), sparkline: cyMonthly.invoice, pySparkline: pyMonthly.invoice },
       momentum: { last3, prior3, pct: pctChg(last3, prior3) },
     },
     trend: { cy: cyTrend, py: pyTrend, fcst: fcstTrend },
@@ -2658,106 +2664,117 @@ function computeAnalyticsData() {
 }
 
 function renderAnalytics() {
+  renderAnalyticsExcludeMonths();
   const data = computeAnalyticsData();
   renderAnalyticsKPIs(data);
-  renderAnalyticsTrend(data);
   renderBreakdown('analytics-by-customer', data.byCustomer);
   renderBreakdown('analytics-by-brand', data.byBrand);
   renderBreakdown('analytics-by-type', data.byType);
-  document.getElementById('analytics-period-label').textContent = data.cy + ' vs ' + data.py + ' · Through ' + MONTH_LABELS[data.throughMonth];
+}
+
+function renderAnalyticsExcludeMonths() {
+  const container = document.getElementById('analytics-exclude-months');
+  const months = [...new Set(
+    state.parsedRows.filter(r => (r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0).map(r => r.month)
+  )].sort();
+  container.innerHTML = months.map(m => {
+    const isExcluded = state.excludedMonths.has(m);
+    return '<span class="exclude-chip' + (isExcluded ? ' excluded' : '') + '" data-month="' + sanitize(m) + '">' + sanitize(fmtTimeKey(m)) + '</span>';
+  }).join('');
+  container.onclick = function(e) {
+    const chip = e.target.closest('.exclude-chip');
+    if (!chip) return;
+    const m = chip.dataset.month;
+    if (state.excludedMonths.has(m)) { state.excludedMonths.delete(m); chip.classList.remove('excluded'); }
+    else { state.excludedMonths.add(m); chip.classList.add('excluded'); }
+    renderAnalytics();
+  };
 }
 
 function renderAnalyticsKPIs(data) {
   const container = document.getElementById('analytics-kpis');
   const k = data.kpis;
 
-  function chgHtml(pct) {
-    const cls = pct > 0.5 ? 'kpi-up' : pct < -0.5 ? 'kpi-down' : 'kpi-flat';
-    const arrow = pct > 0.5 ? '\u25B2' : pct < -0.5 ? '\u25BC' : '';
-    return '<div class="kpi-change ' + cls + '">' + arrow + ' ' + Math.abs(pct).toFixed(1) + '% vs PY</div>';
-  }
+  // Build each KPI card: title, big number, CY vs PY dual-line chart, % change, red dots for months below PY
+  const cards = [
+    { title: data.cy + ' Orders', val: k.orders.cy, pct: k.orders.pct, cy: k.orders.sparkline, py: k.orders.pySparkline, id: 0 },
+    { title: data.cy + ' POS', val: k.pos.cy, pct: k.pos.pct, cy: k.pos.sparkline, py: k.pos.pySparkline, id: 1 },
+    { title: data.cy + ' Invoice', val: k.invoice.cy, pct: k.invoice.pct, cy: k.invoice.sparkline, py: k.invoice.pySparkline, id: 2 },
+  ];
 
-  container.innerHTML =
-    '<div class="kpi-card">' +
-      '<div class="kpi-label">Orders YTD</div>' +
-      '<div class="kpi-value">' + fmt(k.orders.cy) + '</div>' +
-      chgHtml(k.orders.pct) +
-      '<div class="kpi-sub">PY: ' + fmt(k.orders.py) + '</div>' +
-      '<div class="kpi-sparkline"><canvas id="kpi-spark-0"></canvas></div>' +
-    '</div>' +
-    '<div class="kpi-card">' +
-      '<div class="kpi-label">POS YTD</div>' +
-      '<div class="kpi-value">' + fmt(k.pos.cy) + '</div>' +
-      chgHtml(k.pos.pct) +
-      '<div class="kpi-sub">PY: ' + fmt(k.pos.py) + '</div>' +
-      '<div class="kpi-sparkline"><canvas id="kpi-spark-1"></canvas></div>' +
-    '</div>' +
-    '<div class="kpi-card">' +
-      '<div class="kpi-label">Invoice YTD</div>' +
-      '<div class="kpi-value">' + fmt(k.invoice.cy) + '</div>' +
-      chgHtml(k.invoice.pct) +
-      '<div class="kpi-sub">PY: ' + fmt(k.invoice.py) + '</div>' +
-      '<div class="kpi-sparkline"><canvas id="kpi-spark-2"></canvas></div>' +
-    '</div>' +
-    '<div class="kpi-card kpi-momentum">' +
-      '<div class="kpi-label">Momentum</div>' +
-      '<div class="kpi-value">' + (k.momentum.pct > 0 ? '+' : '') + k.momentum.pct.toFixed(1) + '%</div>' +
-      '<div class="kpi-change ' + (k.momentum.pct > 0.5 ? 'kpi-up' : k.momentum.pct < -0.5 ? 'kpi-down' : 'kpi-flat') + '">Last 3 mo vs prior 3 mo</div>' +
-      '<div class="kpi-sub">' + fmt(k.momentum.last3) + ' vs ' + fmt(k.momentum.prior3) + '</div>' +
+  container.innerHTML = cards.map(c => {
+    const cls = c.pct > 0.5 ? 'kpi-up' : c.pct < -0.5 ? 'kpi-down' : 'kpi-flat';
+    const arrow = c.pct > 0.5 ? '\u25B2' : c.pct < -0.5 ? '\u25BC' : '';
+    // Count months below PY
+    let belowCount = 0;
+    const dots = MONTH_LABELS.map((_, i) => {
+      const cyVal = c.cy[i] || 0;
+      const pyVal = c.py[i] || 0;
+      const below = cyVal > 0 && pyVal > 0 && cyVal < pyVal;
+      if (below) belowCount++;
+      return '<span class="kpi-dot ' + (below ? 'kpi-dot-red' : 'kpi-dot-clear') + '"></span>';
+    }).join('');
+    // Find max value for annotation
+    const maxVal = Math.max(...c.cy.filter(v => v > 0));
+    const maxIdx = c.cy.lastIndexOf(maxVal);
+    const maxLabel = maxVal > 0 ? fmt(maxVal) : '';
+
+    return '<div class="kpi-card">' +
+      '<div class="kpi-title">' + c.title + '<span style="float:right; font-size:11px; color:#374151; font-weight:600">' + maxLabel + '</span></div>' +
+      '<div class="kpi-value">' + fmt(c.val) + '</div>' +
+      '<div class="kpi-chart"><canvas id="kpi-chart-' + c.id + '"></canvas></div>' +
+      '<div class="kpi-change ' + cls + '">' + arrow + ' ' + Math.abs(c.pct).toFixed(1) + '% vs PY</div>' +
+      '<div class="kpi-sub">Months below PY: ' + belowCount + '</div>' +
+      '<div class="kpi-dots">' + dots + '</div>' +
     '</div>';
+  }).join('');
 
-  // Sparklines
-  const sparkData = [k.orders.sparkline, k.pos.sparkline, k.invoice.sparkline];
-  for (let i = 0; i < 3; i++) {
-    if (kpiSparklines[i]) { kpiSparklines[i].destroy(); kpiSparklines[i] = null; }
-    const el = document.getElementById('kpi-spark-' + i);
+  // Render dual-line charts (CY dark, PY light)
+  for (const c of cards) {
+    if (kpiSparklines[c.id]) { kpiSparklines[c.id].destroy(); kpiSparklines[c.id] = null; }
+    const el = document.getElementById('kpi-chart-' + c.id);
     if (!el) continue;
-    kpiSparklines[i] = new Chart(el, {
+    kpiSparklines[c.id] = new Chart(el, {
       type: 'line',
-      data: { labels: MONTH_LABELS, datasets: [{ data: sparkData[i], borderColor: '#2563eb', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false }] },
-      options: { responsive: true, maintainAspectRatio: false, animation: false, plugins: { legend: { display: false }, tooltip: { enabled: false } }, scales: { x: { display: false }, y: { display: false } } }
+      data: {
+        labels: MONTH_LABELS.map(m => m[0]),
+        datasets: [
+          { data: c.py.map(v => v > 0 ? v : null), borderColor: '#c4c9d0', borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: true },
+          { data: c.cy.map(v => v > 0 ? v : null), borderColor: '#374151', borderWidth: 2, pointRadius: 0, tension: 0.2, spanGaps: true },
+        ]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false, animation: false,
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: { display: true, ticks: { font: { size: 9 }, color: '#9ca3af' }, grid: { display: false } },
+          y: { display: false }
+        }
+      }
     });
   }
-}
-
-function renderAnalyticsTrend(data) {
-  const ctx = document.getElementById('analytics-trend-chart');
-  if (analyticsTrendChart) { analyticsTrendChart.destroy(); analyticsTrendChart = null; }
-
-  analyticsTrendChart = new Chart(ctx, {
-    type: 'line',
-    data: {
-      labels: MONTH_LABELS,
-      datasets: [
-        { label: data.py + ' Orders', data: data.trend.py, borderColor: '#9ca3af', borderWidth: 2, pointRadius: 3, pointBackgroundColor: '#9ca3af', tension: 0.1, spanGaps: false },
-        { label: data.cy + ' Orders', data: data.trend.cy, borderColor: '#2563eb', borderWidth: 2.5, pointRadius: 3, pointBackgroundColor: '#2563eb', tension: 0.1, spanGaps: false },
-        { label: data.cy + ' Forecast', data: data.trend.fcst, borderColor: '#2563eb', borderWidth: 2, borderDash: [6, 3], pointRadius: 2, pointBackgroundColor: '#2563eb', tension: 0.1, spanGaps: false },
-      ]
-    },
-    options: {
-      responsive: true, maintainAspectRatio: false,
-      animation: { duration: 300 },
-      interaction: { mode: 'index', intersect: false },
-      plugins: { legend: { labels: { font: { size: 11 }, usePointStyle: true, pointStyle: 'line' } } },
-      scales: { x: { ticks: { font: { size: 11 } } }, y: { ticks: { font: { size: 11 } } } },
-    }
-  });
 }
 
 function renderBreakdown(containerId, items) {
   const container = document.getElementById(containerId);
   if (!items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No data</div>'; return; }
-  const maxVal = Math.max(...items.map(i => i.cy));
+  const maxVal = Math.max(...items.map(i => Math.max(i.cy, i.py)));
 
-  container.innerHTML = items.slice(0, 10).map(item => {
-    const barWidth = maxVal > 0 ? Math.max(2, item.cy / maxVal * 100) : 0;
+  container.innerHTML = items.slice(0, 8).map(item => {
+    const cyWidth = maxVal > 0 ? Math.max(2, item.cy / maxVal * 100) : 0;
+    const pyWidth = maxVal > 0 ? Math.max(2, item.py / maxVal * 100) : 0;
     const cls = item.pct > 0.5 ? 'kpi-up' : item.pct < -0.5 ? 'kpi-down' : 'kpi-flat';
     const arrow = item.pct > 0.5 ? '\u25B2' : item.pct < -0.5 ? '\u25BC' : '';
     return '<div class="breakdown-item">' +
       '<span class="breakdown-name">' + sanitize(item.name) + '</span>' +
-      '<span class="breakdown-bar-wrap"><span class="breakdown-bar" style="width:' + barWidth + '%"></span></span>' +
-      '<span class="breakdown-value">' + fmt(item.cy) + '</span>' +
-      '<span class="breakdown-pct ' + cls + '">' + arrow + Math.abs(item.pct).toFixed(1) + '%</span>' +
+      '<span class="breakdown-bars">' +
+        '<span class="breakdown-bar-py" style="width:' + pyWidth + '%"></span>' +
+        '<span class="breakdown-bar-cy" style="width:' + cyWidth + '%"></span>' +
+      '</span>' +
+      '<span class="breakdown-stats">' +
+        '<div class="breakdown-val">' + fmt(item.cy) + '</div>' +
+        '<div class="breakdown-pct ' + cls + '">' + arrow + Math.abs(item.pct).toFixed(1) + '%</div>' +
+      '</span>' +
     '</div>';
   }).join('');
 }
