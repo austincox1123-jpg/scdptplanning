@@ -749,28 +749,50 @@ function extractSeries(rows, source) {
     else if (source === 'invoice') v = r.invoiceCases;
     else if (source === 'order') v = r.orderCases;
     else v = ((r.posCases||0)*0.5 + (r.orderCases||0)*0.5);
-    return { month: r.month, value: v || 0 };
-  }).filter(p => p.value > 0).sort((a,b) => a.month.localeCompare(b.month));
+    return { month: r.month, value: v != null ? v : 0 };
+  }).filter(p => p.value != null).sort((a,b) => a.month.localeCompare(b.month));
+}
+
+// Get weeks for a month key from the config
+function getWeeksForMonth(monthKey) {
+  const moMatch = monthKey.match(/^(\d{4})-(\d{2})/);
+  if (moMatch) return state.weeksPerMonthConfig[parseInt(moMatch[2]) - 1] || 4;
+  return 4;
 }
 
 function runForecastEngine(actuals, params, horizon) {
-  // No weeks normalization — forecast engine works on raw values as-is.
-  // Weekly data: each point is one week. Monthly data: each point is one month.
+  // For monthly data: normalize to weekly run rates before forecasting,
+  // then scale back by weeks-per-month on output. This removes 4-4-5
+  // calendar distortion so the engine sees a smooth signal.
   let series = extractSeries(actuals, params.source);
+
+  // Normalize: divide each month's volume by its weeks to get weekly rate
+  if (!state.isWeekly) {
+    series = series.map(p => ({
+      month: p.month,
+      value: p.value / getWeeksForMonth(p.month)
+    }));
+  }
+
+  // Also normalize the multi-series methods (pos_lag, consumption_rate)
+  function normalizeSeries(s) {
+    if (state.isWeekly) return s;
+    return s.map(p => ({ month: p.month, value: p.value / getWeeksForMonth(p.month) }));
+  }
 
   let results;
   switch (params.method) {
     case 'weighted_ma': results = weightedMovingAverage(series, params, horizon); break;
     case 'exp_smoothing': results = exponentialSmoothing(series, params, horizon); break;
     case 'pos_lag': {
-      const pos = extractSeries(actuals, 'pos');
-      const ship = extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source);
+      const pos = normalizeSeries(extractSeries(actuals, 'pos'));
+      const ship = normalizeSeries(extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source));
       results = posToShipmentLag(pos, ship, 2, params.window, horizon);
       break;
     }
     case 'consumption_rate': {
-      const pos = extractSeries(actuals, 'pos');
-      const ord = extractSeries(actuals, 'order');
+      const pos = normalizeSeries(extractSeries(actuals, 'pos'));
+      const ord = normalizeSeries(extractSeries(actuals, 'order'));
       results = consumptionRate(pos, ord, params.window, horizon);
       break;
     }
@@ -778,6 +800,14 @@ function runForecastEngine(actuals, params, horizon) {
     case 'linear_slope': results = linearSlope(series, params, horizon); break;
     case 'holts': results = holtsLinearTrend(series, params, horizon); break;
     default: results = weightedMovingAverage(series, params, horizon);
+  }
+
+  // Denormalize: multiply each forecast month's weekly rate by its weeks
+  if (!state.isWeekly) {
+    results = results.map(r => ({
+      month: r.month,
+      statValue: Math.round(r.statValue * getWeeksForMonth(r.month))
+    }));
   }
 
   // Apply MOQ rounding if set
@@ -791,50 +821,20 @@ function runForecastEngine(actuals, params, horizon) {
   return results;
 }
 
-// Linear Average — calculates avg weekly run rate over the lookback
-// window, then projects that flat rate forward for each future month
-// (adjusted for the number of weeks in each month).
+// Linear Average — simple average of the lookback values, projected flat.
+// Input is already normalized to weekly rates by runForecastEngine (for monthly data),
+// and denormalization (scaling by weeks-per-month) happens after this returns.
 function linearAverage(actuals, params, horizon) {
   if (!actuals.length) return [];
   const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
   const win = Math.min(params.window, sorted.length);
   const recent = sorted.slice(-win);
-
-  // Total volume over the lookback window
-  const totalVol = recent.reduce((s,p) => s + p.value, 0);
-
-  // Calculate average weekly rate
-  let avgWeeklyRate;
-  if (state.isWeekly) {
-    // Each data point IS a week, so just average the values
-    avgWeeklyRate = totalVol / recent.length;
-  } else {
-    // Monthly: estimate total weeks from month lengths
-    let totalWeeks = 0;
-    for (const p of recent) {
-      const moMatch = p.month.match(/^(\d{4})-(\d{2})/);
-      if (moMatch) {
-        const daysInMonth = new Date(parseInt(moMatch[1]), parseInt(moMatch[2]), 0).getDate();
-        totalWeeks += daysInMonth / 7;
-      } else { totalWeeks += 4.33; }
-    }
-    avgWeeklyRate = totalWeeks > 0 ? totalVol / totalWeeks : 0;
-  }
+  const avg = recent.reduce((s,p) => s + p.value, 0) / recent.length;
 
   const results = [];
   const lastKey = sorted[sorted.length - 1].month;
   for (let i = 1; i <= horizon; i++) {
-    // For weekly data, each period is 1 week so just use the weekly rate
-    if (state.isWeekly) {
-      results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(avgWeeklyRate) });
-    } else {
-      const moMatch = lastKey.match(/^(\d{4})-(\d{2})/);
-      const baseYr = moMatch ? parseInt(moMatch[1]) : 2026;
-      const baseMo = moMatch ? parseInt(moMatch[2]) - 1 : 0;
-      const targetDate = new Date(baseYr, baseMo + i + 1, 0);
-      const weeksInMonth = targetDate.getDate() / 7;
-      results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(avgWeeklyRate * weeksInMonth) });
-    }
+    results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(avg) });
   }
   return results;
 }
@@ -1319,9 +1319,12 @@ function runForecast() {
         const filtered = getFilteredRows();
         const agg = new Map();
         for (const r of filtered) {
-          if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+          // Include rows with any actual data (even zeros from gap-filling)
+          if (r.posCases != null || r.invoiceCases != null || r.orderCases != null) {
             // Skip excluded months
             if (state.excludedMonths.has(r.month)) continue;
+            // Skip future-only rows (forecast but no actuals at all)
+            if (r.forecast != null && r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
             const tk = timeKey(r);
             const prev = agg.get(tk) || { month: tk, posCases: 0, invoiceCases: 0, orderCases: 0 };
             prev.posCases += r.posCases || 0;
@@ -1459,10 +1462,11 @@ function bulkForecast() {
   requestAnimationFrame(() => {
     try {
       const baseParams = getConfigParams();
-      // Find every unique customer/product combo with actual data
+      // Find every unique customer/product combo with actual data (including zeros)
       const combos = new Map();
       for (const r of state.parsedRows) {
-        if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+        if (r.posCases != null || r.invoiceCases != null || r.orderCases != null) {
+          if (r.forecast != null && r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
           const key = r.customerName + '|' + r.productNumber;
           if (!combos.has(key)) combos.set(key, []);
           combos.get(key).push(r);
@@ -1521,8 +1525,9 @@ function findBestMethod() {
       const filtered = getFilteredRows();
       const monthAgg = new Map();
       for (const r of filtered) {
-        if ((r.posCases||0) > 0 || (r.invoiceCases||0) > 0 || (r.orderCases||0) > 0) {
+        if (r.posCases != null || r.invoiceCases != null || r.orderCases != null) {
           if (state.excludedMonths.has(r.month)) continue;
+          if (r.forecast != null && r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
           const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
           prev.posCases += r.posCases || 0;
           prev.invoiceCases += r.invoiceCases || 0;
@@ -1746,7 +1751,8 @@ function runBacktest() {
   const skuGroups = new Map();
   for (const r of filtered) {
     if (state.excludedMonths.has(r.month)) continue;
-    if ((r.posCases||0) <= 0 && (r.invoiceCases||0) <= 0 && (r.orderCases||0) <= 0) continue;
+    if (r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
+    if (r.forecast != null && r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
     const ck = r.customerName + '|' + r.productNumber;
     if (!skuGroups.has(ck)) skuGroups.set(ck, []);
     skuGroups.get(ck).push(r);
