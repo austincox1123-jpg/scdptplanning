@@ -1640,85 +1640,100 @@ function jumpToForecast(customer, product) {
 }
 
 // ============================================================
-// BACKTESTING ENGINE — Lag 2 Month Accuracy
+// BACKTESTING ENGINE — Lag 2 Month Accuracy (Per-SKU rollup)
 // ============================================================
-// For each historical month t (starting from month index window+2),
-// pretend we're 2 months before: use only data up to t-2, run the
-// forecast engine for 2 months forward, take the value at t.
-// Compare to actual at t → gives lag-2 forecast accuracy.
+// Each customer/product combo is backtested individually, then
+// errors are rolled up: WMAPE = sum(all |errors|) / sum(all actuals)
+// across all SKUs. This is a volume-weighted average of per-SKU
+// WMAPEs — bigger SKUs count more.
 
 function runBacktest() {
   const filtered = getFilteredRows();
   const params = getConfigParams();
-  const src = params.source;
-
-  // Aggregate actuals by month (respecting exclusions)
-  const monthAgg = new Map();
-  for (const r of filtered) {
-    if (state.excludedMonths.has(r.month)) continue;
-    let vol = 0;
-    if (src === 'pos') vol = r.posCases || 0;
-    else if (src === 'invoice') vol = r.invoiceCases || 0;
-    else if (src === 'order') vol = r.orderCases || 0;
-    else vol = ((r.posCases||0)*0.5 + (r.orderCases||0)*0.5);
-    if (vol <= 0) continue;
-    const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
-    prev.posCases += r.posCases || 0;
-    prev.invoiceCases += r.invoiceCases || 0;
-    prev.orderCases += r.orderCases || 0;
-    monthAgg.set(r.month, prev);
-  }
-
-  const allActuals = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
-  const minHistory = Math.max(params.window, 3) + 2; // need at least window months + 2 lag
-  if (allActuals.length < minHistory) return null;
-
-  const results = []; // {month, actual, forecast, error, absPctError}
   const LAG = 2;
 
-  for (let i = minHistory; i < allActuals.length; i++) {
-    const targetMonth = allActuals[i].month;
-    // Use only data up to i - LAG
-    const trainingData = allActuals.slice(0, i - LAG);
-    if (trainingData.length < params.window) continue;
-
-    // Run forecast for LAG months forward
-    const fcResults = runForecastEngine(trainingData, params, LAG);
-    if (fcResults.length < LAG) continue;
-
-    // The LAG-th result is our forecast for targetMonth
-    const fcValue = fcResults[LAG - 1].statValue;
-
-    // Accuracy always measured against ORDER_CASES
-    const actual = allActuals[i].orderCases || 0;
-    if (actual <= 0) continue;
-
-    const error = fcValue - actual;
-    const absPctError = Math.abs(error) / actual;
-
-    results.push({ month: targetMonth, actual, forecast: fcValue, error, absPctError });
+  // Group filtered rows by customer|product
+  const skuGroups = new Map();
+  for (const r of filtered) {
+    if (state.excludedMonths.has(r.month)) continue;
+    if ((r.posCases||0) <= 0 && (r.invoiceCases||0) <= 0 && (r.orderCases||0) <= 0) continue;
+    const ck = r.customerName + '|' + r.productNumber;
+    if (!skuGroups.has(ck)) skuGroups.set(ck, []);
+    skuGroups.get(ck).push(r);
   }
 
-  if (results.length === 0) return null;
+  // Backtest each SKU individually, collect all month-level errors
+  const allErrors = []; // {month, actual, forecast, error} across all SKUs
+  const monthRollup = new Map(); // month => {totalActual, totalForecast} for detail table
+  let skusTested = 0;
 
-  // Calculate summary metrics
-  const totalActual = results.reduce((s,r) => s + r.actual, 0);
-  const totalAbsError = results.reduce((s,r) => s + Math.abs(r.error), 0);
-  const totalError = results.reduce((s,r) => s + r.error, 0);
+  for (const [ck, rows] of skuGroups) {
+    // Aggregate this SKU's rows by month
+    const monthAgg = new Map();
+    for (const r of rows) {
+      const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
+      prev.posCases += r.posCases || 0;
+      prev.invoiceCases += r.invoiceCases || 0;
+      prev.orderCases += r.orderCases || 0;
+      monthAgg.set(r.month, prev);
+    }
+    const skuActuals = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
+    const minHistory = Math.max(params.window, 3) + LAG;
+    if (skuActuals.length < minHistory) continue;
 
-  // WMAPE = sum(|error|) / sum(actual) — volume-weighted accuracy
+    let skuHasResults = false;
+    for (let i = minHistory; i < skuActuals.length; i++) {
+      const targetMonth = skuActuals[i].month;
+      const trainingData = skuActuals.slice(0, i - LAG);
+      if (trainingData.length < params.window) continue;
+
+      const fcResults = runForecastEngine(trainingData, params, LAG);
+      if (fcResults.length < LAG) continue;
+      const fcValue = fcResults[LAG - 1].statValue;
+
+      // Accuracy always measured against ORDER_CASES
+      const actual = skuActuals[i].orderCases || 0;
+      if (actual <= 0) continue;
+
+      const error = fcValue - actual;
+      allErrors.push({ month: targetMonth, actual, forecast: fcValue, error });
+
+      // Roll up for the detail table (aggregate across SKUs per month)
+      const mr = monthRollup.get(targetMonth) || { actual: 0, forecast: 0 };
+      mr.actual += actual;
+      mr.forecast += fcValue;
+      monthRollup.set(targetMonth, mr);
+      skuHasResults = true;
+    }
+    if (skuHasResults) skusTested++;
+  }
+
+  if (allErrors.length === 0) return null;
+
+  // Summary metrics across all SKU errors
+  const totalActual = allErrors.reduce((s,r) => s + r.actual, 0);
+  const totalAbsError = allErrors.reduce((s,r) => s + Math.abs(r.error), 0);
+  const totalError = allErrors.reduce((s,r) => s + r.error, 0);
+
+  // WMAPE = sum(|error|) / sum(actual) — volume-weighted across all SKUs
   const wmape = totalActual > 0 ? totalAbsError / totalActual : 0;
 
   // Bias = sum(error) / sum(actual) — positive = over-forecasting
   const bias = totalActual > 0 ? totalError / totalActual : 0;
 
-  // Simple MAPE for reference
-  const mape = results.reduce((s,r) => s + r.absPctError, 0) / results.length;
+  // Simple MAPE across all individual SKU/month errors
+  const mape = allErrors.reduce((s,r) => s + Math.abs(r.error) / r.actual, 0) / allErrors.length;
 
-  // Forecast accuracy = 1 - WMAPE
   const accuracy = 1 - wmape;
 
-  return { results, wmape, bias, mape, accuracy, monthsBacktested: results.length };
+  // Build detail rows from month rollup (aggregated across SKUs per month)
+  const results = [...monthRollup.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([month, mr]) => {
+    const error = mr.forecast - mr.actual;
+    const absPctError = mr.actual > 0 ? Math.abs(error) / mr.actual : 0;
+    return { month, actual: mr.actual, forecast: mr.forecast, error, absPctError };
+  });
+
+  return { results, wmape, bias, mape, accuracy, monthsBacktested: results.length, skusTested };
 }
 
 function renderAccuracyFromResults(backtest) {
@@ -1757,7 +1772,7 @@ function renderAccuracyFromResults(backtest) {
     '<div class="metric-card">' +
       '<div class="metric-label">Months Tested</div>' +
       '<div class="metric-value metric-neutral">' + backtest.monthsBacktested + '</div>' +
-      '<div class="metric-sub">Lag 2 month periods</div>' +
+      '<div class="metric-sub">' + (backtest.skusTested > 1 ? backtest.skusTested + ' SKUs · ' : '') + 'Lag 2 mo</div>' +
     '</div>';
 
   // Detail table
