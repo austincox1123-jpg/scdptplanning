@@ -577,8 +577,44 @@ function parseFile(buffer) {
         weekNumber: toNum(m.weekNumber) });
     }
 
-    // Post-process: for each customer/product combo, find the first month with a forecast.
-    // Any row before that with null POS/Invoice/Order gets set to 0 (not null).
+    // Post-process: fill missing months with zero rows.
+    // For each customer/product combo, find the min and max month with actual data,
+    // then insert zero rows for any gaps in between.
+    const comboData = new Map(); // key => { meta, months: Set, minMonth, maxMonth }
+    for (const r of rows) {
+      const ck = r.customerName + '|' + r.productNumber;
+      const hasActuals = (r.posCases != null && r.posCases > 0) || (r.invoiceCases != null && r.invoiceCases > 0) || (r.orderCases != null && r.orderCases > 0);
+      if (!comboData.has(ck)) {
+        comboData.set(ck, { meta: { customerName: r.customerName, productNumber: r.productNumber, productName: r.productName, brand: r.brand, type: r.type, formation: r.formation }, months: new Set(), minMonth: null, maxMonth: null });
+      }
+      const cd = comboData.get(ck);
+      cd.months.add(r.month);
+      if (hasActuals) {
+        if (!cd.minMonth || r.month < cd.minMonth) cd.minMonth = r.month;
+        if (!cd.maxMonth || r.month > cd.maxMonth) cd.maxMonth = r.month;
+      }
+    }
+
+    // Generate zero rows for missing months
+    for (const [ck, cd] of comboData) {
+      if (!cd.minMonth || !cd.maxMonth) continue;
+      // Walk from minMonth to maxMonth
+      const minMatch = cd.minMonth.match(/^(\d{4})-(\d{2})/);
+      const maxMatch = cd.maxMonth.match(/^(\d{4})-(\d{2})/);
+      if (!minMatch || !maxMatch) continue;
+      let yr = parseInt(minMatch[1]), mo = parseInt(minMatch[2]);
+      const endYr = parseInt(maxMatch[1]), endMo = parseInt(maxMatch[2]);
+      while (yr < endYr || (yr === endYr && mo <= endMo)) {
+        const monthKey = yr + '-' + String(mo).padStart(2,'0') + '-15';
+        if (!cd.months.has(monthKey)) {
+          rows.push({ ...cd.meta, month: monthKey, posCases: 0, invoiceCases: 0, orderCases: 0, forecast: null, maxWksPerMonth: null, weekNumber: null });
+        }
+        mo++;
+        if (mo > 12) { mo = 1; yr++; }
+      }
+    }
+
+    // Set null actuals to 0 for rows before the first forecast
     const comboFirstFcst = new Map();
     for (const r of rows) {
       if (r.forecast != null) {
