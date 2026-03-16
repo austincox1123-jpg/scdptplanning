@@ -502,8 +502,9 @@
     </nav>
 
     <div class="container py-6">
-      <!-- Month Exclusion -->
+      <!-- Active filter + Month Exclusion -->
       <div class="card p-4 mb-6">
+        <div id="analytics-active-filter" class="hidden" style="margin-bottom:8px; padding:6px 10px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:6px; font-size:12px; display:flex; justify-content:space-between; align-items:center;"></div>
         <div class="flex items-center gap-4">
           <label class="label" style="margin-bottom:0; white-space:nowrap">Exclude Months</label>
           <div class="exclude-grid" id="analytics-exclude-months"></div>
@@ -2537,7 +2538,14 @@ let kpiSparklines = [null, null, null];
 const MONTH_LABELS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 function computeAnalyticsData() {
-  const rows = state.parsedRows;
+  const sel = analyticsSelection;
+  // Filter rows by current analytics selection
+  const rows = state.parsedRows.filter(r => {
+    if (sel.customer && r.customerName !== sel.customer) return false;
+    if (sel.brand && r.brand !== sel.brand) return false;
+    if (sel.type && r.type !== sel.type) return false;
+    return true;
+  });
 
   // Determine CY = latest year with actual data, PY = CY - 1
   let maxActualYear = 0;
@@ -2686,12 +2694,31 @@ function computeAnalyticsData() {
 
 function renderAnalytics() {
   renderAnalyticsExcludeMonths();
+  renderAnalyticsFilterBar();
   const data = computeAnalyticsData();
   renderAnalyticsKPIs(data);
-  renderBreakdown('analytics-by-customer', data.byCustomer);
-  renderBreakdown('analytics-by-brand', data.byBrand);
-  renderBreakdown('analytics-by-type', data.byType);
+  renderBreakdown('analytics-by-customer', data.byCustomer, 'customer');
+  renderBreakdown('analytics-by-brand', data.byBrand, 'brand');
+  renderBreakdown('analytics-by-type', data.byType, 'type');
   renderAttribution();
+}
+
+function renderAnalyticsFilterBar() {
+  const bar = document.getElementById('analytics-active-filter');
+  const sel = analyticsSelection;
+  const parts = [];
+  if (sel.customer) parts.push('Customer: <strong>' + sanitize(sel.customer) + '</strong>');
+  if (sel.brand) parts.push('Brand: <strong>' + sanitize(sel.brand) + '</strong>');
+  if (sel.type) parts.push('Type: <strong>' + sanitize(sel.type) + '</strong>');
+  if (parts.length === 0) {
+    bar.classList.add('hidden');
+    bar.style.display = '';
+    return;
+  }
+  bar.classList.remove('hidden');
+  bar.style.display = 'flex';
+  bar.innerHTML = '<span>' + parts.join(' &middot; ') + '</span>' +
+    '<button onclick="analyticsSelection={customer:null,brand:null,type:null};renderAnalytics()" style="background:none;border:none;color:#2563eb;font-size:12px;cursor:pointer;text-decoration:underline;">Clear filters</button>';
 }
 
 function renderAnalyticsExcludeMonths() {
@@ -2718,10 +2745,11 @@ function renderAnalyticsKPIs(data) {
   const k = data.kpis;
 
   // Build each KPI card: title, big number, CY vs PY dual-line chart, % change, red dots for months below PY
+  const tm = data.throughMonth;
   const cards = [
-    { title: data.cy + ' Orders', val: k.orders.cy, pct: k.orders.pct, cy: k.orders.sparkline, py: k.orders.pySparkline, id: 0 },
-    { title: data.cy + ' POS', val: k.pos.cy, pct: k.pos.pct, cy: k.pos.sparkline, py: k.pos.pySparkline, id: 1 },
-    { title: data.cy + ' Invoice', val: k.invoice.cy, pct: k.invoice.pct, cy: k.invoice.sparkline, py: k.invoice.pySparkline, id: 2 },
+    { title: data.cy + ' Orders', val: k.orders.cy, pct: k.orders.pct, cy: k.orders.sparkline, py: k.orders.pySparkline, id: 0, tm },
+    { title: data.cy + ' POS', val: k.pos.cy, pct: k.pos.pct, cy: k.pos.sparkline, py: k.pos.pySparkline, id: 1, tm },
+    { title: data.cy + ' Invoice', val: k.invoice.cy, pct: k.invoice.pct, cy: k.invoice.sparkline, py: k.invoice.pySparkline, id: 2, tm },
   ];
 
   container.innerHTML = cards.map(c => {
@@ -2751,7 +2779,7 @@ function renderAnalyticsKPIs(data) {
     '</div>';
   }).join('');
 
-  // Render dual-line charts (CY dark, PY light)
+  // Render dual-line charts (CY dark, PY light) — show zeros, cut CY at last actual month
   for (const c of cards) {
     if (kpiSparklines[c.id]) { kpiSparklines[c.id].destroy(); kpiSparklines[c.id] = null; }
     const el = document.getElementById('kpi-chart-' + c.id);
@@ -2761,8 +2789,8 @@ function renderAnalyticsKPIs(data) {
       data: {
         labels: MONTH_LABELS.map(m => m[0]),
         datasets: [
-          { data: c.py.map(v => v > 0 ? v : null), borderColor: '#c4c9d0', borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: true },
-          { data: c.cy.map(v => v > 0 ? v : null), borderColor: '#374151', borderWidth: 2, pointRadius: 0, tension: 0.2, spanGaps: true },
+          { data: c.py, borderColor: '#c4c9d0', borderWidth: 1.5, pointRadius: 0, tension: 0.2, spanGaps: false },
+          { data: c.cy.map((v, i) => i <= c.tm ? v : null), borderColor: '#374151', borderWidth: 2, pointRadius: 0, tension: 0.2, spanGaps: false },
         ]
       },
       options: {
@@ -2777,17 +2805,20 @@ function renderAnalyticsKPIs(data) {
   }
 }
 
-function renderBreakdown(containerId, items) {
+function renderBreakdown(containerId, items, dimension) {
   const container = document.getElementById(containerId);
   if (!items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No data</div>'; return; }
   const maxVal = Math.max(...items.map(i => Math.max(i.cy, i.py)));
+  const sel = analyticsSelection[dimension];
 
   container.innerHTML = items.slice(0, 8).map(item => {
     const cyWidth = maxVal > 0 ? Math.max(2, item.cy / maxVal * 100) : 0;
     const pyWidth = maxVal > 0 ? Math.max(2, item.py / maxVal * 100) : 0;
     const cls = item.pct > 0.5 ? 'kpi-up' : item.pct < -0.5 ? 'kpi-down' : 'kpi-flat';
     const arrow = item.pct > 0.5 ? '\u25B2' : item.pct < -0.5 ? '\u25BC' : '';
-    return '<div class="breakdown-item">' +
+    const isActive = sel === item.name;
+    const activeStyle = isActive ? ' style="background:#eff6ff; border-radius:4px; padding:10px 6px; margin:0 -6px;"' : '';
+    return '<div class="breakdown-item" data-dim="' + dimension + '" data-name="' + sanitize(item.name) + '"' + activeStyle + ' style="cursor:pointer;' + (isActive ? 'background:#eff6ff;border-radius:4px;padding:10px 6px;margin:0 -6px' : '') + '">' +
       '<span class="breakdown-name">' + sanitize(item.name) + '</span>' +
       '<span class="breakdown-bars">' +
         '<span class="breakdown-bar-py" style="width:' + pyWidth + '%"></span>' +
@@ -2799,6 +2830,21 @@ function renderBreakdown(containerId, items) {
       '</span>' +
     '</div>';
   }).join('');
+
+  // Click handler: toggle selection, re-render analytics
+  container.onclick = function(e) {
+    const row = e.target.closest('.breakdown-item');
+    if (!row) return;
+    const dim = row.dataset.dim;
+    const name = row.dataset.name;
+    // Toggle: click same item again to deselect
+    if (analyticsSelection[dim] === name) {
+      analyticsSelection[dim] = null;
+    } else {
+      analyticsSelection[dim] = name;
+    }
+    renderAnalytics();
+  };
 }
 
 // ============================================================
@@ -2806,9 +2852,17 @@ function renderBreakdown(containerId, items) {
 // ============================================================
 const ATTR_COLORS = ['#1e3a5f','#2563eb','#3b82f6','#60a5fa','#93c5fd','#7c3aed','#8b5cf6','#a78bfa','#0d9488','#14b8a6','#2dd4bf','#d97706','#f59e0b','#fbbf24','#dc2626','#ef4444'];
 let attrDrillState = { level: 'brand', brand: null, type: null };
+// Cross-filter state for analytics: clicking a breakdown bar filters the other sections
+let analyticsSelection = { customer: null, brand: null, type: null };
 
 function computeAttribution() {
-  const rows = state.parsedRows;
+  const sel = analyticsSelection;
+  const rows = state.parsedRows.filter(r => {
+    if (sel.customer && r.customerName !== sel.customer) return false;
+    if (sel.brand && r.brand !== sel.brand) return false;
+    if (sel.type && r.type !== sel.type) return false;
+    return true;
+  });
   let maxYear = 0;
   for (const r of rows) {
     if ((r.orderCases || 0) > 0) {
