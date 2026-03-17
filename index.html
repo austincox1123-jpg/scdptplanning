@@ -945,6 +945,30 @@ function runForecastEngine(actuals, params, horizon) {
     });
   }
 
+  // POS-to-Order scaling: when forecasting from POS, scale up by the historical
+  // order/POS ratio so the stat forecast reflects shipment-level volume.
+  // POS is smooth and forecastable; orders are lumpy but the cumulative ratio is stable.
+  if (params.source === 'pos' && params.method !== 'pos_lag' && params.method !== 'consumption_rate') {
+    const posSeries = extractSeries(actuals, 'pos').filter(p => p.value > 0);
+    const ordSeries = extractSeries(actuals, 'order').filter(p => p.value > 0);
+    if (posSeries.length > 0 && ordSeries.length > 0) {
+      // Use overlapping months to compute cumulative ratio
+      const posMap = new Map(posSeries.map(p => [p.month, p.value]));
+      const ordMap = new Map(ordSeries.map(p => [p.month, p.value]));
+      let totalPOS = 0, totalOrd = 0;
+      for (const [m, pv] of posMap) {
+        if (ordMap.has(m)) { totalPOS += pv; totalOrd += ordMap.get(m); }
+      }
+      const ratio = totalPOS > 0 ? totalOrd / totalPOS : 1;
+      if (ratio > 0.1 && ratio < 20) { // sanity bounds
+        results = results.map(r => ({
+          month: r.month,
+          statValue: Math.round(r.statValue * ratio)
+        }));
+      }
+    }
+  }
+
   // Denormalize: multiply each forecast month's weekly rate by its weeks
   if (!state.isWeekly) {
     results = results.map(r => ({
