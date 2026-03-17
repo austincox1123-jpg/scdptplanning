@@ -407,6 +407,8 @@
                 <option value="linear_avg">Linear Average (Avg Weekly Run Rate)</option>
                 <option value="linear_slope">Linear Trend (Slope)</option>
                 <option value="holts">Holt's Linear Trend (Level + Trend)</option>
+                <option value="croston">Croston's SBA (Intermittent Demand)</option>
+                <option value="holt_winters">Holt-Winters Seasonal (24+ mo required)</option>
               </select>
             </div>
             <div>
@@ -518,15 +520,15 @@
         <!-- Right: Breakdown bars -->
         <div class="analytics-right">
           <div class="card p-6 mb-4">
-            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders | Customer vs PY</h2>
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders & POS | Customer vs PY</h2>
             <div id="analytics-by-customer"></div>
           </div>
           <div class="card p-6 mb-4">
-            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders | Brand vs PY</h2>
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders & POS | Brand vs PY</h2>
             <div id="analytics-by-brand"></div>
           </div>
           <div class="card p-6">
-            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders | Type vs PY</h2>
+            <h2 class="text-sm font-semibold text-gray-700 mb-4">Orders & POS | Type vs PY</h2>
             <div id="analytics-by-type"></div>
           </div>
         </div>
@@ -766,7 +768,14 @@ function calcSeasonalIndices(data) {
     if (moMatch) { const mi = parseInt(moMatch[2]) - 1; totals[mi] += p.value; counts[mi]++; }
   }
   const avg = data.reduce((s,p) => s + p.value, 0) / data.length;
-  return Array.from({length:12}, (_, i) => counts[i] > 0 && avg > 0 ? (totals[i]/counts[i])/avg : 1);
+  const n = data.length;
+  // Shrink indices toward 1.0 based on data availability — prevents noise from short histories
+  const shrinkage = Math.min(1, (n / 12 - 1) / 2); // 0 at 12mo, 0.5 at 24mo, 1.0 at 36mo+
+  return Array.from({length:12}, (_, i) => {
+    if (counts[i] <= 0 || avg <= 0) return 1;
+    const rawIndex = (totals[i]/counts[i]) / avg;
+    return 1 + shrinkage * (rawIndex - 1);
+  });
 }
 
 function weightedMovingAverage(actuals, params, horizon) {
@@ -899,6 +908,8 @@ function runForecastEngine(actuals, params, horizon) {
     case 'linear_avg': results = linearAverage(series, params, horizon); break;
     case 'linear_slope': results = linearSlope(series, params, horizon); break;
     case 'holts': results = holtsLinearTrend(series, params, horizon); break;
+    case 'croston': results = crostonSBA(series, params, horizon); break;
+    case 'holt_winters': results = holtWintersMult(series, params, horizon); break;
     default: results = weightedMovingAverage(series, params, horizon);
   }
 
@@ -1026,6 +1037,140 @@ function holtsLinearTrend(actuals, params, horizon) {
     results.push({ month: forecastMonth(lastKey, i), statValue: fc });
   }
   return results;
+}
+
+// ============================================================
+// DEMAND CLASSIFICATION — Syntetos-Boylan (ADI / CV²)
+// ============================================================
+function classifyDemand(values) {
+  const n = values.length;
+  if (n < 4) return 'smooth';
+  const nonZero = values.filter(v => v > 0);
+  if (nonZero.length === 0) return 'intermittent';
+  const adi = n / nonZero.length;
+  const mean = nonZero.reduce((s,v) => s+v, 0) / nonZero.length;
+  const variance = nonZero.reduce((s,v) => s + (v-mean)*(v-mean), 0) / nonZero.length;
+  const cv2 = mean > 0 ? variance / (mean * mean) : 0;
+  if (adi < 1.32 && cv2 < 0.49) return 'smooth';
+  if (adi >= 1.32 && cv2 < 0.49) return 'intermittent';
+  if (adi < 1.32 && cv2 >= 0.49) return 'erratic';
+  return 'lumpy';
+}
+
+// ============================================================
+// MULTI-METRIC SCORING — WMAPE + bias + recency + RMSPE
+// ============================================================
+function scoreBacktest(monthErrors) {
+  const n = monthErrors.length;
+  if (n === 0) return Infinity;
+  let totalActual = 0, totalAbsErr = 0, totalSignedErr = 0, sumSqPctErr = 0;
+  for (const m of monthErrors) {
+    totalActual += m.actual;
+    totalAbsErr += Math.abs(m.forecast - m.actual);
+    totalSignedErr += (m.forecast - m.actual);
+    const pctErr = m.actual > 0 ? (m.forecast - m.actual) / m.actual : (m.forecast > 0 ? 1 : 0);
+    sumSqPctErr += pctErr * pctErr;
+  }
+  const wmape = totalActual > 0 ? totalAbsErr / totalActual : 1;
+  const bias = totalActual > 0 ? Math.abs(totalSignedErr / totalActual) : 0;
+  const rmspctErr = Math.sqrt(sumSqPctErr / n);
+  // Recency weighting: recent errors matter more
+  let recentWmape = 0, recentActual = 0;
+  const recentN = Math.max(1, Math.floor(n / 3));
+  for (let i = n - recentN; i < n; i++) {
+    recentActual += monthErrors[i].actual;
+    recentWmape += Math.abs(monthErrors[i].forecast - monthErrors[i].actual);
+  }
+  recentWmape = recentActual > 0 ? recentWmape / recentActual : 1;
+  return 0.40 * wmape + 0.25 * recentWmape + 0.20 * bias + 0.15 * rmspctErr;
+}
+
+// ============================================================
+// CROSTON'S SBA — for intermittent demand
+// ============================================================
+function crostonSBA(actuals, params, horizon) {
+  if (actuals.length < 3) return [];
+  const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const values = sorted.map(p => p.value);
+  const alpha = params.alpha || 0.15;
+  const demands = [], intervals = [];
+  let lastNonZero = -1;
+  for (let i = 0; i < values.length; i++) {
+    if (values[i] > 0) {
+      demands.push(values[i]);
+      if (lastNonZero >= 0) intervals.push(i - lastNonZero);
+      lastNonZero = i;
+    }
+  }
+  if (demands.length < 2 || intervals.length < 1) {
+    const avg = values.reduce((s,v) => s+v, 0) / values.length;
+    const results = [];
+    const lastKey = sorted[sorted.length-1].month;
+    for (let i = 1; i <= horizon; i++)
+      results.push({ month: forecastMonth(lastKey, i), statValue: Math.max(0, Math.round(avg)) });
+    return results;
+  }
+  let smoothD = demands[0], smoothP = intervals[0];
+  for (let i = 1; i < demands.length; i++) {
+    smoothD = alpha * demands[i] + (1-alpha) * smoothD;
+    if (i <= intervals.length) smoothP = alpha * intervals[i-1] + (1-alpha) * smoothP;
+  }
+  const forecast = smoothP > 0 ? (smoothD / smoothP) * (1 - alpha/2) : 0;
+  const results = [];
+  const lastKey = sorted[sorted.length-1].month;
+  for (let i = 1; i <= horizon; i++)
+    results.push({ month: forecastMonth(lastKey, i), statValue: Math.max(0, Math.round(forecast)) });
+  return results;
+}
+
+// ============================================================
+// HOLT-WINTERS MULTIPLICATIVE SEASONAL
+// ============================================================
+function holtWintersMult(actuals, params, horizon) {
+  if (actuals.length < 24) return [];
+  const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const m = 12;
+  const alpha = params.alpha || 0.3;
+  const beta = 0.05;
+  const gamma = 0.15;
+  const firstYear = sorted.slice(0, m).map(p => p.value);
+  const yearAvg = firstYear.reduce((s,v) => s+v, 0) / m;
+  if (yearAvg <= 0) return [];
+  const seasonal = firstYear.map(v => yearAvg > 0 ? v / yearAvg : 1);
+  let level = yearAvg;
+  let trend = (sorted.slice(m, 2*m).reduce((s,p) => s+p.value, 0)/m - yearAvg) / m;
+  for (let i = m; i < sorted.length; i++) {
+    const si = i % m;
+    const y = sorted[i].value;
+    const prevLevel = level;
+    level = alpha * (y / (seasonal[si] || 1)) + (1-alpha) * (prevLevel + trend);
+    trend = beta * (level - prevLevel) + (1-beta) * trend;
+    seasonal[si] = gamma * (y / (level || 1)) + (1-gamma) * seasonal[si];
+  }
+  const results = [];
+  const lastKey = sorted[sorted.length-1].month;
+  const lastIdx = sorted.length;
+  for (let i = 1; i <= horizon; i++) {
+    const si = (lastIdx + i - 1) % m;
+    const fc = Math.max(0, Math.round((level + trend * i) * seasonal[si]));
+    results.push({ month: forecastMonth(lastKey, i), statValue: fc });
+  }
+  return results;
+}
+
+// ============================================================
+// SEASONALITY AUTO-DETECTION
+// ============================================================
+function detectSeasonality(values) {
+  const n = values.length;
+  if (n < 24) return { seasonal: false, strength: 0 };
+  const mean = values.reduce((s,v) => s+v, 0) / n;
+  let autoCorr12 = 0, variance = 0;
+  for (let i = 0; i < n; i++) variance += (values[i] - mean) ** 2;
+  for (let i = 12; i < n; i++) autoCorr12 += (values[i] - mean) * (values[i-12] - mean);
+  const r12 = variance > 0 ? autoCorr12 / variance : 0;
+  const threshold = 2 / Math.sqrt(n);
+  return { seasonal: r12 > threshold, strength: r12 };
 }
 
 // ============================================================
@@ -1533,8 +1678,17 @@ function backtestParams(actualData, params) {
     const fcResults = runForecastEngine(trainingData, params, LAG);
     if (fcResults.length < LAG) continue;
     const fcValue = fcResults[LAG - 1].statValue;
-    const actual = actualData[i].orderCases || 0;
-    if (actual <= 0) continue;
+    // Use the same source signal as the forecast for backtest accuracy
+    const sourceField = params.source === 'pos' ? 'posCases' : params.source === 'invoice' ? 'invoiceCases' : 'orderCases';
+    const actual = actualData[i][sourceField] || 0;
+    // Don't skip zeros — penalize forecasting volume when actual is 0
+    if (actual === 0 && fcValue === 0) continue;
+    if (actual === 0 && fcValue > 0) {
+      totalAbsError += fcValue;
+      totalActual += fcValue;
+      monthErrors.push({ month: actualData[i].month, actual: 0, forecast: fcValue, pctErr: 1.0 });
+      continue;
+    }
     const absErr = Math.abs(fcValue - actual);
     const pctErr = absErr / actual;
     totalActual += actual;
@@ -1556,15 +1710,47 @@ function detectOutliers(monthErrors) {
 }
 
 function findBestMethodForData(actualData, baseParams) {
-  const methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope', 'holts'];
+  const sourceField = baseParams.source === 'pos' ? 'posCases' : baseParams.source === 'invoice' ? 'invoiceCases' : 'orderCases';
+  const values = actualData.map(r => r[sourceField] || 0);
+  const demandClass = classifyDemand(values);
   const hasPOS = actualData.some(r => (r.posCases || 0) > 0);
-  if (hasPOS) methods.push('pos_lag', 'consumption_rate');
+  const seasonInfo = detectSeasonality(values);
+
+  // Restrict methods by demand class
+  let methods;
+  switch (demandClass) {
+    case 'smooth':
+      methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope', 'holts'];
+      if (seasonInfo.seasonal) methods.push('holt_winters');
+      break;
+    case 'erratic':
+      methods = ['weighted_ma', 'exp_smoothing', 'linear_avg'];
+      break;
+    case 'intermittent':
+      methods = ['croston', 'linear_avg', 'weighted_ma'];
+      break;
+    case 'lumpy':
+      methods = ['croston', 'linear_avg'];
+      break;
+    default:
+      methods = ['weighted_ma', 'exp_smoothing', 'linear_avg', 'linear_slope', 'holts'];
+  }
+  if (hasPOS && (demandClass === 'smooth' || demandClass === 'erratic')) {
+    methods.push('pos_lag', 'consumption_rate');
+  }
 
   const windows = [3, 6, 9, 12, 18, 24];
   const alphas = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9];
-  const needsAlpha = new Set(['exp_smoothing', 'holts']);
+  const needsAlpha = new Set(['exp_smoothing', 'holts', 'croston', 'holt_winters']);
 
-  let best = { method: baseParams.method, window: baseParams.window, alpha: baseParams.alpha || 0.3, wmape: Infinity, monthErrors: [] };
+  // Complexity penalty — prefer simpler methods unless complex ones are meaningfully better
+  const complexityPenalty = {
+    linear_avg: 0, weighted_ma: 0.01, exp_smoothing: 0.02, croston: 0.02,
+    linear_slope: 0.02, holts: 0.03, holt_winters: 0.03, pos_lag: 0.03, consumption_rate: 0.03
+  };
+
+  let best = { method: baseParams.method, window: baseParams.window, alpha: baseParams.alpha || 0.3, wmape: Infinity, score: Infinity, monthErrors: [], demandClass };
+  const allScored = [];
 
   for (const method of methods) {
     const alphaList = needsAlpha.has(method) ? alphas : [0.3];
@@ -1572,12 +1758,39 @@ function findBestMethodForData(actualData, baseParams) {
       for (const alpha of alphaList) {
         const params = { ...baseParams, method, window: win, alpha };
         const result = backtestParams(actualData, params);
-        if (result && result.wmape < best.wmape) {
-          best = { method, window: win, alpha, wmape: result.wmape, monthErrors: result.monthErrors };
+        if (!result) continue;
+        const rawScore = scoreBacktest(result.monthErrors);
+        const adjustedScore = rawScore + (complexityPenalty[method] || 0);
+        allScored.push({ method, window: win, alpha, wmape: result.wmape, score: adjustedScore, monthErrors: result.monthErrors });
+        if (adjustedScore < best.score) {
+          best = { method, window: win, alpha, wmape: result.wmape, score: adjustedScore, monthErrors: result.monthErrors, demandClass };
         }
       }
     }
   }
+
+  // Ensemble: average top 3 diverse methods if available
+  if (allScored.length >= 3) {
+    allScored.sort((a,b) => a.score - b.score);
+    // Pick top 3 with different methods for diversity
+    const topDiverse = [];
+    const seenMethods = new Set();
+    for (const r of allScored) {
+      if (!seenMethods.has(r.method)) {
+        topDiverse.push(r);
+        seenMethods.add(r.method);
+        if (topDiverse.length >= 3) break;
+      }
+    }
+    if (topDiverse.length >= 2) {
+      const ensembleScore = topDiverse.reduce((s,r) => s + r.score, 0) / topDiverse.length;
+      // Ensemble gets a bonus (typically more stable)
+      if (ensembleScore * 0.92 < best.score) {
+        best.ensemble = topDiverse.map(r => ({ method: r.method, window: r.window, alpha: r.alpha, weight: 1/topDiverse.length }));
+      }
+    }
+  }
+
   return best;
 }
 
@@ -1613,14 +1826,35 @@ function bulkForecast() {
 
         // Find best method, window, and alpha for this specific SKU
         const best = findBestMethodForData(actualData, baseParams);
-        const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
+        let results;
 
-        const results = runForecastEngine(actualData, params, 18);
-        if (!results.length) { skipped++; continue; }
+        // Use ensemble if recommended, otherwise single best method
+        if (best.ensemble && best.ensemble.length >= 2) {
+          const ensembleResults = best.ensemble.map(e => {
+            const p = { ...baseParams, method: e.method, window: e.window, alpha: e.alpha };
+            return runForecastEngine(actualData, p, 18);
+          }).filter(r => r.length > 0);
+          if (ensembleResults.length >= 2) {
+            results = ensembleResults[0].map((f, i) => ({
+              month: f.month,
+              statValue: Math.round(ensembleResults.reduce((s, er) => s + (er[i]?.statValue || 0), 0) / ensembleResults.length)
+            }));
+            methodCounts['ensemble'] = (methodCounts['ensemble'] || 0) + 1;
+          } else {
+            const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
+            results = runForecastEngine(actualData, params, 18);
+            methodCounts[best.method] = (methodCounts[best.method] || 0) + 1;
+          }
+        } else {
+          const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
+          results = runForecastEngine(actualData, params, 18);
+          methodCounts[best.method] = (methodCounts[best.method] || 0) + 1;
+        }
+
+        if (!results || !results.length) { skipped++; continue; }
 
         state.skuForecasts[key] = results;
         state.forecastResults[key] = results;
-        methodCounts[best.method] = (methodCounts[best.method] || 0) + 1;
         saved++;
       }
 
@@ -1672,6 +1906,12 @@ function findBestMethod() {
         holts: "Holt's Linear Trend",
         pos_lag: 'POS-to-Shipment Lag',
         consumption_rate: 'POS Consumption Rate',
+        croston: "Croston's SBA",
+        holt_winters: 'Holt-Winters Seasonal',
+      };
+
+      const demandClassLabels = {
+        smooth: 'Smooth', erratic: 'Erratic', intermittent: 'Intermittent', lumpy: 'Lumpy'
       };
 
       const div = document.getElementById('best-method-result');
@@ -1681,14 +1921,22 @@ function findBestMethod() {
       } else {
         const acc = ((1 - best.wmape) * 100).toFixed(1);
         const label = methodLabels[best.method] || best.method;
-        const needsAlpha = best.method === 'exp_smoothing' || best.method === 'holts';
+        const needsAlpha = ['exp_smoothing', 'holts', 'croston', 'holt_winters'].includes(best.method);
+        const classLabel = demandClassLabels[best.demandClass] || best.demandClass;
 
         let html = '<div class="best-method-result">' +
           '<strong>' + label + '</strong><br>' +
-          'Accuracy: ' + acc + '%<br>' +
+          'Accuracy: ' + acc + '% · Demand Pattern: <strong>' + classLabel + '</strong><br>' +
           'Window: ' + best.window + ' mo' +
           (needsAlpha ? ' · Alpha: ' + best.alpha.toFixed(1) : '') +
           '</div>';
+
+        // Ensemble recommendation
+        if (best.ensemble) {
+          html += '<div style="margin-top:6px; padding:6px 8px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:4px; font-size:11px; color:#0369a1;">' +
+            '<strong>Ensemble recommended</strong> (avg of top methods):<br>' +
+            best.ensemble.map(e => (methodLabels[e.method] || e.method) + ' w' + e.window).join(', ') + '</div>';
+        }
 
         // Outlier detection
         const outliers = detectOutliers(best.monthErrors);
@@ -1702,7 +1950,10 @@ function findBestMethod() {
         div.classList.remove('hidden');
 
         // Auto-select best config in the UI
-        document.getElementById('cfg-method').value = best.method;
+        const methodSelect = document.getElementById('cfg-method');
+        if (methodSelect.querySelector('option[value="' + best.method + '"]')) {
+          methodSelect.value = best.method;
+        }
         document.getElementById('cfg-window').value = best.window;
         document.getElementById('window-val').textContent = best.window;
         if (needsAlpha) {
@@ -1713,7 +1964,7 @@ function findBestMethod() {
         // Auto-run forecast with the best config so accuracy section stays visible
         hideLoading();
         runForecast();
-        showToast('Best: ' + label + ' · Window ' + best.window + (needsAlpha ? ' · Alpha ' + best.alpha.toFixed(1) : '') + ' (' + acc + '%)', 'success');
+        showToast('Best: ' + label + ' · ' + classLabel + ' · Window ' + best.window + (needsAlpha ? ' · Alpha ' + best.alpha.toFixed(1) : '') + ' (' + acc + '%)', 'success');
         return;
       }
 
@@ -1911,8 +2162,9 @@ function runBacktest() {
       if (fcResults.length < LAG) continue;
       const fcValue = fcResults[LAG - 1].statValue;
 
-      // Accuracy always measured against ORDER_CASES
-      const actual = skuActuals[i].orderCases || 0;
+      // Accuracy measured against the configured source signal
+      const sourceField = params.source === 'pos' ? 'posCases' : params.source === 'invoice' ? 'invoiceCases' : 'orderCases';
+      const actual = skuActuals[i][sourceField] || 0;
       if (actual <= 0) continue;
 
       const error = fcValue - actual;
@@ -2565,10 +2817,14 @@ function computeAnalyticsData() {
   const fcstMonthly = new Array(12).fill(0); // existing forecast for CY months
   let cyLastActualMonth = -1; // 0-indexed, last month with actual orders in CY
 
-  // Breakdown maps
+  // Breakdown maps — Orders
   const custCY = new Map(), custPY = new Map();
   const brandCY = new Map(), brandPY = new Map();
   const typeCY = new Map(), typePY = new Map();
+  // Breakdown maps — POS
+  const custPosCY = new Map(), custPosPY = new Map();
+  const brandPosCY = new Map(), brandPosPY = new Map();
+  const typePosCY = new Map(), typePosPY = new Map();
 
   for (const r of rows) {
     const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
@@ -2585,13 +2841,17 @@ function computeAnalyticsData() {
         cyMonthly.invoice[mi] += r.invoiceCases || 0;
         if (mi > cyLastActualMonth) cyLastActualMonth = mi;
 
-        // Breakdowns
+        // Breakdowns — Orders
         const c = r.customerName || 'Unknown';
         custCY.set(c, (custCY.get(c) || 0) + (r.orderCases || 0));
         const b = r.brand || 'Unknown';
         brandCY.set(b, (brandCY.get(b) || 0) + (r.orderCases || 0));
         const t = r.type || 'Unknown';
         typeCY.set(t, (typeCY.get(t) || 0) + (r.orderCases || 0));
+        // Breakdowns — POS
+        custPosCY.set(c, (custPosCY.get(c) || 0) + (r.posCases || 0));
+        brandPosCY.set(b, (brandPosCY.get(b) || 0) + (r.posCases || 0));
+        typePosCY.set(t, (typePosCY.get(t) || 0) + (r.posCases || 0));
       }
       if (r.forecast != null) {
         fcstMonthly[mi] += r.forecast;
@@ -2608,6 +2868,10 @@ function computeAnalyticsData() {
         brandPY.set(b, (brandPY.get(b) || 0) + (r.orderCases || 0));
         const t = r.type || 'Unknown';
         typePY.set(t, (typePY.get(t) || 0) + (r.orderCases || 0));
+        // POS PY
+        custPosPY.set(c, (custPosPY.get(c) || 0) + (r.posCases || 0));
+        brandPosPY.set(b, (brandPosPY.get(b) || 0) + (r.posCases || 0));
+        typePosPY.set(t, (typePosPY.get(t) || 0) + (r.posCases || 0));
       }
     }
   }
@@ -2665,13 +2929,15 @@ function computeAnalyticsData() {
   const pyTrend = pyMonthly.orders.map(v => v > 0 ? v : null);
 
   // Breakdowns: merge CY and PY, compute % change
-  function buildBreakdown(cyMap, pyMap) {
+  function buildBreakdown(cyMap, pyMap, posMapCY, posMapPY) {
     const allKeys = new Set([...cyMap.keys(), ...pyMap.keys()]);
     const items = [];
     for (const k of allKeys) {
       const cyVal = cyMap.get(k) || 0;
       const pyVal = pyMap.get(k) || 0;
-      items.push({ name: k, cy: cyVal, py: pyVal, pct: pctChg(cyVal, pyVal) });
+      const posCY = posMapCY ? (posMapCY.get(k) || 0) : 0;
+      const posPY = posMapPY ? (posMapPY.get(k) || 0) : 0;
+      items.push({ name: k, cy: cyVal, py: pyVal, pct: pctChg(cyVal, pyVal), posCY, posPY, posPct: pctChg(posCY, posPY) });
     }
     items.sort((a, b) => b.cy - a.cy);
     return items;
@@ -2686,9 +2952,9 @@ function computeAnalyticsData() {
       momentum: { last3, prior3, pct: pctChg(last3, prior3) },
     },
     trend: { cy: cyTrend, py: pyTrend, fcst: fcstTrend },
-    byCustomer: buildBreakdown(custCY, custPY),
-    byBrand: buildBreakdown(brandCY, brandPY),
-    byType: buildBreakdown(typeCY, typePY),
+    byCustomer: buildBreakdown(custCY, custPY, custPosCY, custPosPY),
+    byBrand: buildBreakdown(brandCY, brandPY, brandPosCY, brandPosPY),
+    byType: buildBreakdown(typeCY, typePY, typePosCY, typePosPY),
   };
 }
 
@@ -2809,6 +3075,8 @@ function renderBreakdown(containerId, items, dimension) {
   const container = document.getElementById(containerId);
   if (!items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No data</div>'; return; }
   const maxVal = Math.max(...items.map(i => Math.max(i.cy, i.py)));
+  const maxPosVal = Math.max(...items.map(i => Math.max(i.posCY || 0, i.posPY || 0)));
+  const hasPOS = maxPosVal > 0;
   const sel = analyticsSelection[dimension];
 
   container.innerHTML = items.slice(0, 8).map(item => {
@@ -2818,16 +3086,40 @@ function renderBreakdown(containerId, items, dimension) {
     const arrow = item.pct > 0.5 ? '\u25B2' : item.pct < -0.5 ? '\u25BC' : '';
     const isActive = sel === item.name;
     const activeStyle = isActive ? ' style="background:#eff6ff; border-radius:4px; padding:10px 6px; margin:0 -6px;"' : '';
+
+    // POS row
+    let posRow = '';
+    if (hasPOS) {
+      const posCYW = maxPosVal > 0 ? Math.max(2, (item.posCY || 0) / maxPosVal * 100) : 0;
+      const posPYW = maxPosVal > 0 ? Math.max(2, (item.posPY || 0) / maxPosVal * 100) : 0;
+      const posCls = item.posPct > 0.5 ? 'kpi-up' : item.posPct < -0.5 ? 'kpi-down' : 'kpi-flat';
+      const posArrow = item.posPct > 0.5 ? '\u25B2' : item.posPct < -0.5 ? '\u25BC' : '';
+      posRow = '<div style="display:flex; align-items:center; gap:6px; margin-top:4px; padding-left:2px;">' +
+        '<span style="font-size:9px; color:#6b7280; min-width:28px; text-transform:uppercase; letter-spacing:0.05em;">POS</span>' +
+        '<span class="breakdown-bars" style="height:14px;">' +
+          '<span class="breakdown-bar-py" style="width:' + posPYW + '%; height:14px; background:#c4b5fd;"></span>' +
+          '<span class="breakdown-bar-cy" style="width:' + posCYW + '%; height:14px; background:#7c3aed;"></span>' +
+        '</span>' +
+        '<span class="breakdown-stats">' +
+          '<div class="breakdown-val" style="font-size:11px;">' + fmt(item.posCY || 0) + '</div>' +
+          '<div class="breakdown-pct ' + posCls + '" style="font-size:10px;">' + posArrow + Math.abs(item.posPct).toFixed(1) + '%</div>' +
+        '</span>' +
+      '</div>';
+    }
+
     return '<div class="breakdown-item" data-dim="' + dimension + '" data-name="' + sanitize(item.name) + '"' + activeStyle + ' style="cursor:pointer;' + (isActive ? 'background:#eff6ff;border-radius:4px;padding:10px 6px;margin:0 -6px' : '') + '">' +
-      '<span class="breakdown-name">' + sanitize(item.name) + '</span>' +
-      '<span class="breakdown-bars">' +
-        '<span class="breakdown-bar-py" style="width:' + pyWidth + '%"></span>' +
-        '<span class="breakdown-bar-cy" style="width:' + cyWidth + '%"></span>' +
-      '</span>' +
-      '<span class="breakdown-stats">' +
-        '<div class="breakdown-val">' + fmt(item.cy) + '</div>' +
-        '<div class="breakdown-pct ' + cls + '">' + arrow + Math.abs(item.pct).toFixed(1) + '%</div>' +
-      '</span>' +
+      '<div style="display:flex; align-items:center; gap:6px;">' +
+        '<span class="breakdown-name">' + sanitize(item.name) + '</span>' +
+        '<span class="breakdown-bars">' +
+          '<span class="breakdown-bar-py" style="width:' + pyWidth + '%"></span>' +
+          '<span class="breakdown-bar-cy" style="width:' + cyWidth + '%"></span>' +
+        '</span>' +
+        '<span class="breakdown-stats">' +
+          '<div class="breakdown-val">' + fmt(item.cy) + '</div>' +
+          '<div class="breakdown-pct ' + cls + '">' + arrow + Math.abs(item.pct).toFixed(1) + '%</div>' +
+        '</span>' +
+      '</div>' +
+      posRow +
     '</div>';
   }).join('');
 
