@@ -346,6 +346,7 @@
               </div>
             </div>
             <div style="height:350px; position:relative;"><canvas id="forecast-chart" style="cursor:crosshair"></canvas></div>
+            <div id="chart-promo-tags" style="display:flex; overflow-x:auto; padding:2px 0 4px; gap:0;"></div>
           </div>
           <!-- Accuracy / Backtesting -->
           <div id="accuracy-section" class="card mt-4 p-6 hidden">
@@ -2739,6 +2740,9 @@ function renderChart(rows) {
     },
   ];
 
+  // Render promo tag row below chart
+  renderChartPromoTags(chartRows);
+
   if (chart) {
     chart.data.labels = labels;
     chart.data.datasets.forEach((ds, i) => { if (!datasets[i]) return; ds.data = datasets[i].data; if (datasets[i].pointRadius) ds.pointRadius = datasets[i].pointRadius; if (datasets[i].pointBackgroundColor) ds.pointBackgroundColor = datasets[i].pointBackgroundColor; if (datasets[i].pointStyle) ds.pointStyle = datasets[i].pointStyle; });
@@ -2788,6 +2792,47 @@ function renderChart(rows) {
       },
     });
   }
+}
+
+function renderChartPromoTags(chartRows) {
+  const container = document.getElementById('chart-promo-tags');
+  if (!container || !chartRows.length) return;
+
+  // Align with chart plot area (offset for y-axis labels)
+  // We'll set padding-left to match the chart's left offset after render
+  requestAnimationFrame(() => {
+    if (chart && chart.chartArea) {
+      container.style.paddingLeft = chart.chartArea.left + 'px';
+      container.style.paddingRight = (chart.width - chart.chartArea.right) + 'px';
+    }
+  });
+
+  // Build tag buttons — one per chart data point, evenly distributed
+  container.innerHTML = chartRows.map(r => {
+    const tag = state.promoMonths[r.month];
+    let cls, lbl;
+    if (tag) {
+      if (r.isHistorical) {
+        cls = tag.type === 'promo' ? 'promo-tag-promo' : 'promo-tag-outlier';
+      } else {
+        cls = 'promo-tag-future';
+      }
+      lbl = tag.type === 'promo' ? 'P' : '!';
+    } else {
+      cls = 'promo-tag-empty';
+      lbl = '\u00B7'; // middle dot
+    }
+    return '<span class="promo-tag ' + cls + '" data-promo-month="' + sanitize(r.month) + '" ' +
+      'style="flex:1; text-align:center; font-size:9px; padding:1px 0; min-width:0; border-radius:2px; cursor:pointer;">' +
+      lbl + '</span>';
+  }).join('');
+
+  container.onclick = function(e) {
+    const tag = e.target.closest('.promo-tag');
+    if (tag && tag.dataset.promoMonth) {
+      togglePromoTag(tag.dataset.promoMonth);
+    }
+  };
 }
 
 // ============================================================
