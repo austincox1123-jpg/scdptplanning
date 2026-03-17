@@ -1893,17 +1893,19 @@ function bulkForecast() {
 }
 
 // ============================================================
-// FIND BEST METHOD — backtest all methods, pick lowest WMAPE
+// FIND BEST METHOD — uses same logic as bulkForecast per-SKU
 // ============================================================
 function findBestMethod() {
   showLoading('Optimizing method, window & alpha...');
   requestAnimationFrame(() => {
     try {
       const filtered = getFilteredRows();
+      const baseParams = getConfigParams();
+
+      // Aggregate filtered data by month — same logic as bulkForecast per-SKU
       const monthAgg = new Map();
       for (const r of filtered) {
         if (r.posCases != null || r.invoiceCases != null || r.orderCases != null) {
-          if (state.excludedMonths.has(r.month)) continue;
           if (r.forecast != null && r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
           const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
           prev.posCases += r.posCases || 0;
@@ -1912,10 +1914,9 @@ function findBestMethod() {
           monthAgg.set(r.month, prev);
         }
       }
-      const allActuals = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
+      const actualData = [...monthAgg.values()].sort((a,b) => a.month.localeCompare(b.month));
 
-      const baseParams = getConfigParams();
-      const best = findBestMethodForData(allActuals, baseParams);
+      const best = findBestMethodForData(actualData, baseParams);
 
       const methodLabels = {
         weighted_ma: 'Weighted Moving Avg',
@@ -1927,6 +1928,7 @@ function findBestMethod() {
         consumption_rate: 'POS Consumption Rate',
         croston: "Croston's SBA",
         holt_winters: 'Holt-Winters Seasonal',
+        ensemble: 'Ensemble (Top Methods Avg)',
       };
 
       const demandClassLabels = {
@@ -1939,23 +1941,20 @@ function findBestMethod() {
         div.classList.remove('hidden');
       } else {
         const acc = ((1 - best.wmape) * 100).toFixed(1);
-        const label = methodLabels[best.method] || best.method;
+        const usesEnsemble = best.ensemble && best.ensemble.length >= 2;
+        const label = usesEnsemble ? 'Ensemble (Top Methods Avg)' : (methodLabels[best.method] || best.method);
         const needsAlpha = ['exp_smoothing', 'holts', 'croston', 'holt_winters'].includes(best.method);
         const classLabel = demandClassLabels[best.demandClass] || best.demandClass;
 
         let html = '<div class="best-method-result">' +
           '<strong>' + label + '</strong><br>' +
-          'Accuracy: ' + acc + '% · Demand Pattern: <strong>' + classLabel + '</strong><br>' +
-          'Window: ' + best.window + ' mo' +
-          (needsAlpha ? ' · Alpha: ' + best.alpha.toFixed(1) : '') +
-          '</div>';
-
-        // Ensemble recommendation
-        if (best.ensemble) {
-          html += '<div style="margin-top:6px; padding:6px 8px; background:#f0f9ff; border:1px solid #bae6fd; border-radius:4px; font-size:11px; color:#0369a1;">' +
-            '<strong>Ensemble recommended</strong> (avg of top methods):<br>' +
-            best.ensemble.map(e => (methodLabels[e.method] || e.method) + ' w' + e.window).join(', ') + '</div>';
+          'Accuracy: ' + acc + '% · Demand Pattern: <strong>' + classLabel + '</strong><br>';
+        if (usesEnsemble) {
+          html += 'Components: ' + best.ensemble.map(e => (methodLabels[e.method] || e.method) + ' w' + e.window).join(', ');
+        } else {
+          html += 'Window: ' + best.window + ' mo' + (needsAlpha ? ' · Alpha: ' + best.alpha.toFixed(1) : '');
         }
+        html += '</div>';
 
         // Outlier detection
         const outliers = detectOutliers(best.monthErrors);
@@ -1968,22 +1967,61 @@ function findBestMethod() {
         div.innerHTML = html;
         div.classList.remove('hidden');
 
-        // Auto-select best config in the UI
-        const methodSelect = document.getElementById('cfg-method');
-        if (methodSelect.querySelector('option[value="' + best.method + '"]')) {
-          methodSelect.value = best.method;
+        // Generate forecast using the EXACT same path as bulkForecast
+        const horizon = state.isWeekly ? 78 : 18;
+        let results;
+
+        if (usesEnsemble) {
+          const ensembleResults = best.ensemble.map(e => {
+            const p = { ...baseParams, method: e.method, window: e.window, alpha: e.alpha };
+            return runForecastEngine(actualData, p, horizon);
+          }).filter(r => r.length > 0);
+          if (ensembleResults.length >= 2) {
+            results = ensembleResults[0].map((f, i) => ({
+              month: f.month,
+              statValue: Math.round(ensembleResults.reduce((s, er) => s + (er[i]?.statValue || 0), 0) / ensembleResults.length)
+            }));
+          }
         }
-        document.getElementById('cfg-window').value = best.window;
-        document.getElementById('window-val').textContent = best.window;
-        if (needsAlpha) {
-          document.getElementById('cfg-alpha').value = best.alpha;
-          document.getElementById('alpha-val').textContent = best.alpha.toFixed(1);
+
+        if (!results) {
+          const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
+          results = runForecastEngine(actualData, params, horizon);
         }
+
+        // Store results using the same key format as bulkForecast
+        const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+        state.previewResults[key] = results;
+        state.forecastResults[key] = results;
+        state.previewFiltered = filtered;
+        state.previewParams = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
+
+        // Also store in skuForecasts using customer|product key (matches bulk)
+        if (state.filters.customer && state.filters.product) {
+          const skuKey = state.filters.customer + '|' + state.filters.product;
+          state.skuForecasts[skuKey] = results;
+        }
+
+        // Update UI dropdowns to reflect what was selected
+        if (!usesEnsemble) {
+          const methodSelect = document.getElementById('cfg-method');
+          if (methodSelect.querySelector('option[value="' + best.method + '"]')) {
+            methodSelect.value = best.method;
+          }
+          document.getElementById('cfg-window').value = best.window;
+          document.getElementById('window-val').textContent = best.window;
+          if (needsAlpha) {
+            document.getElementById('cfg-alpha').value = best.alpha;
+            document.getElementById('alpha-val').textContent = best.alpha.toFixed(1);
+          }
+        }
+
+        document.getElementById('save-forecast-btn').classList.remove('hidden');
         onConfigChange();
-        // Auto-run forecast with the best config so accuracy section stays visible
+        invalidateCache();
+        renderDashboard();
         hideLoading();
-        runForecast();
-        showToast('Best: ' + label + ' · ' + classLabel + ' · Window ' + best.window + (needsAlpha ? ' · Alpha ' + best.alpha.toFixed(1) : '') + ' (' + acc + '%)', 'success');
+        showToast('Best: ' + label + ' · ' + classLabel + ' (' + acc + '%)', 'success');
         return;
       }
 
