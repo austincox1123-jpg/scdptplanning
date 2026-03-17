@@ -913,27 +913,27 @@ function runForecastEngine(actuals, params, horizon) {
 
   // Promo/outlier handling: compute baseline by deweighting outlier/promo months,
   // and compute promo lift factor for future promo windows.
+  // Promo lift is ALWAYS computed from POS (consumer demand signal), not orders/invoice.
+  // Orders spike before promos due to stocking — that's handled by the POS-to-order ratio.
   let promoLift = 1;
   const promoKeys = Object.keys(state.promoMonths);
   if (promoKeys.length > 0) {
+    // Compute promo lift from POS signal (regardless of forecast source)
+    const posSeries = extractSeries(actuals, 'pos');
+    const liftSource = posSeries.length >= 3 ? posSeries : series;
     const promoVals = [], baseVals = [];
-    for (const p of series) {
+    for (const p of liftSource) {
       const tag = state.promoMonths[p.month];
-      if (tag && tag.type === 'outlier') {
-        // Replace outlier with interpolated value from neighbors
-        continue; // skip outliers from series — they'll be removed
-      } else if (tag && tag.type === 'promo') {
-        promoVals.push(p.value);
-      } else {
-        baseVals.push(p.value);
-      }
+      if (tag && tag.type === 'outlier') continue;
+      else if (tag && tag.type === 'promo') promoVals.push(p.value);
+      else baseVals.push(p.value);
     }
-    // Remove outlier-tagged months from the series so they don't distort the forecast
+    // Remove outlier-tagged months from the forecast training series
     series = series.filter(p => {
       const tag = state.promoMonths[p.month];
       return !(tag && tag.type === 'outlier');
     });
-    // Compute promo lift: avg promo month value / avg baseline value
+    // Compute promo lift: avg promo POS / avg baseline POS
     if (promoVals.length > 0 && baseVals.length > 0) {
       const promoAvg = promoVals.reduce((s,v) => s+v, 0) / promoVals.length;
       const baseAvg = baseVals.reduce((s,v) => s+v, 0) / baseVals.length;
@@ -992,13 +992,14 @@ function runForecastEngine(actuals, params, horizon) {
   }
 
   // POS-to-Order scaling: when forecasting from POS, scale up by the historical
-  // order/POS ratio so the stat forecast reflects shipment-level volume.
-  // POS is smooth and forecastable; orders are lumpy but the cumulative ratio is stable.
+  // order/POS ratio, decaying toward 1.0 over the forecast horizon.
+  // Near-term: ratio reflects stocking/pipeline reality.
+  // Long-term: orders converge to POS (replenishment = consumption).
+  // TYPE=WT (wet) has 7-month lead time, so the decay curve is extended.
   if (params.source === 'pos' && params.method !== 'pos_lag' && params.method !== 'consumption_rate') {
     const posSeries = extractSeries(actuals, 'pos').filter(p => p.value > 0);
     const ordSeries = extractSeries(actuals, 'order').filter(p => p.value > 0);
     if (posSeries.length > 0 && ordSeries.length > 0) {
-      // Use overlapping months to compute cumulative ratio
       const posMap = new Map(posSeries.map(p => [p.month, p.value]));
       const ordMap = new Map(ordSeries.map(p => [p.month, p.value]));
       let totalPOS = 0, totalOrd = 0;
@@ -1006,11 +1007,29 @@ function runForecastEngine(actuals, params, horizon) {
         if (ordMap.has(m)) { totalPOS += pv; totalOrd += ordMap.get(m); }
       }
       const ratio = totalPOS > 0 ? totalOrd / totalPOS : 1;
-      if (ratio > 0.1 && ratio < 20) { // sanity bounds
-        results = results.map(r => ({
-          month: r.month,
-          statValue: Math.round(r.statValue * ratio)
-        }));
+      if (ratio > 0.1 && ratio < 20) {
+        // Decay curve: ratio blends toward 1.0 over the horizon
+        // WT (wet) = 7mo lead time → full ratio months 1-7, decay 8-12, ~1.0 by 13+
+        // All other types → full ratio months 1-3, decay 4-6, ~1.0 by 7+
+        const isWet = (params.itemType || '').toUpperCase() === 'WT';
+        const fullRatioMonths = isWet ? 7 : 3;   // keep full ratio this many months
+        const decayMonths = isWet ? 5 : 3;        // transition to 1.0 over this many months
+        const steadyStateRatio = 1.05;             // small buffer for shrink/damage
+
+        results = results.map((r, i) => {
+          const period = i + 1;
+          let adjRatio;
+          if (period <= fullRatioMonths) {
+            adjRatio = ratio;
+          } else if (period <= fullRatioMonths + decayMonths) {
+            // Linear blend from ratio to steadyStateRatio
+            const t = (period - fullRatioMonths) / decayMonths;
+            adjRatio = ratio + (steadyStateRatio - ratio) * t;
+          } else {
+            adjRatio = steadyStateRatio;
+          }
+          return { month: r.month, statValue: Math.round(r.statValue * adjRatio) };
+        });
       }
     }
   }
@@ -1770,6 +1789,9 @@ function runForecast() {
         if (!actualData.length) { hideLoading(); showToast('No actual data found for current filters', 'error'); return; }
 
         const params = getConfigParams();
+        // Detect item type from filtered rows for lead time logic
+        const itemType = (filtered.find(r => r.type) || {}).type || '';
+        params.itemType = itemType;
         // Always 18 months: data is aggregated to monthly buckets
         const horizon = 18;
         const results = runForecastEngine(actualData, params, horizon);
@@ -1988,13 +2010,16 @@ function bulkForecast() {
         if (actualData.length < baseParams.window) { skipped++; continue; }
 
         // Find best method, window, and alpha for this specific SKU
-        const best = findBestMethodForData(actualData, baseParams);
+        // Detect item type for lead time logic (WT = wet, 7mo lead time)
+        const itemType = (rows[0] || {}).type || '';
+        const skuParams = { ...baseParams, itemType };
+        const best = findBestMethodForData(actualData, skuParams);
         let results;
 
         // Use ensemble if recommended, otherwise single best method
         if (best.ensemble && best.ensemble.length >= 2) {
           const ensembleResults = best.ensemble.map(e => {
-            const p = { ...baseParams, method: e.method, window: e.window, alpha: e.alpha };
+            const p = { ...skuParams, method: e.method, window: e.window, alpha: e.alpha };
             return runForecastEngine(actualData, p, 18);
           }).filter(r => r.length > 0);
           if (ensembleResults.length >= 2) {
@@ -2004,12 +2029,12 @@ function bulkForecast() {
             }));
             methodCounts['ensemble'] = (methodCounts['ensemble'] || 0) + 1;
           } else {
-            const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
+            const params = { ...skuParams, method: best.method, window: best.window, alpha: best.alpha };
             results = runForecastEngine(actualData, params, 18);
             methodCounts[best.method] = (methodCounts[best.method] || 0) + 1;
           }
         } else {
-          const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
+          const params = { ...skuParams, method: best.method, window: best.window, alpha: best.alpha };
           results = runForecastEngine(actualData, params, 18);
           methodCounts[best.method] = (methodCounts[best.method] || 0) + 1;
         }
