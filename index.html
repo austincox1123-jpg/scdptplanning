@@ -941,17 +941,16 @@ function runForecastEngine(actuals, params, horizon) {
     }
   }
 
-  // Normalize: divide each month's volume by its weeks to get weekly rate
-  if (!state.isWeekly) {
-    series = series.map(p => ({
-      month: p.month,
-      value: p.value / getWeeksForMonth(p.month)
-    }));
-  }
+  // Normalize: divide each month's volume by its weeks to get weekly rate.
+  // Always normalize — data is aggregated to monthly buckets by runForecast/bulkForecast
+  // regardless of whether original upload was weekly.
+  series = series.map(p => ({
+    month: p.month,
+    value: p.value / getWeeksForMonth(p.month)
+  }));
 
   // Also normalize the multi-series methods (pos_lag, consumption_rate)
   function normalizeSeries(s) {
-    if (state.isWeekly) return s;
     return s.map(p => ({ month: p.month, value: p.value / getWeeksForMonth(p.month) }));
   }
 
@@ -1016,13 +1015,12 @@ function runForecastEngine(actuals, params, horizon) {
     }
   }
 
-  // Denormalize: multiply each forecast month's weekly rate by its weeks
-  if (!state.isWeekly) {
-    results = results.map(r => ({
-      month: r.month,
-      statValue: Math.round(r.statValue * getWeeksForMonth(r.month))
-    }));
-  }
+  // Denormalize: multiply each forecast month's weekly rate by its weeks.
+  // Always denormalize — forecast output is monthly, needs 4-4-5 scaling.
+  results = results.map(r => ({
+    month: r.month,
+    statValue: Math.round(r.statValue * getWeeksForMonth(r.month))
+  }));
 
   // Apply promo lift to future months tagged as promo
   if (promoLift > 1.01) {
