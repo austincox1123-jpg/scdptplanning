@@ -2040,9 +2040,18 @@ function findBestMethod() {
 
         document.getElementById('save-forecast-btn').classList.remove('hidden');
         onConfigChange();
-        invalidateCache();
-        renderDashboard();
-        hideLoading();
+
+        if (!usesEnsemble) {
+          // For single-method: dropdowns are already set, so run through
+          // the standard runForecast path for full consistency (chart + backtest)
+          hideLoading();
+          runForecast();
+        } else {
+          // Ensemble: results already stored above, just render
+          invalidateCache();
+          renderDashboard();
+          hideLoading();
+        }
         showToast('Best: ' + label + ' · ' + classLabel + ' (' + acc + '%)', 'success');
         return;
       }
