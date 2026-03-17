@@ -1374,6 +1374,12 @@ function renderWeeksEditor() {
       e.target.parentElement.classList.toggle('wk-five', val >= 4.5 && val <= 5.5);
       buildWeeksMap();
       invalidateCache();
+      renderDashboard();
+      // Auto-recalculate forecast if one exists so weeks change takes effect immediately
+      const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+      if (state.forecastResults[fcKey] && state.forecastResults[fcKey].length > 0) {
+        runForecast();
+      }
     }
   };
 }
@@ -1476,6 +1482,11 @@ function resetWeeksToDefault() {
   buildWeeksMap();
   renderWeeksEditor();
   invalidateCache();
+  renderDashboard();
+  const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  if (state.forecastResults[fcKey] && state.forecastResults[fcKey].length > 0) {
+    runForecast();
+  }
   showToast('Weeks reset to 4-4-5 default', 'success');
 }
 
