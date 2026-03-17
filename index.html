@@ -769,8 +769,9 @@ function calcSeasonalIndices(data) {
   }
   const avg = data.reduce((s,p) => s + p.value, 0) / data.length;
   const n = data.length;
-  // Shrink indices toward 1.0 based on data availability — prevents noise from short histories
-  const shrinkage = Math.min(1, (n / 12 - 1) / 2); // 0 at 12mo, 0.5 at 24mo, 1.0 at 36mo+
+  // Shrink indices toward 1.0 based on data availability — prevents noise from very short histories
+  // Full strength at 24mo+, partial below that, none at <13mo
+  const shrinkage = n < 13 ? 0 : Math.min(1, (n - 12) / 12);
   return Array.from({length:12}, (_, i) => {
     if (counts[i] <= 0 || avg <= 0) return 1;
     const rawIndex = (totals[i]/counts[i]) / avg;
@@ -799,12 +800,30 @@ function weightedMovingAverage(actuals, params, horizon) {
 function exponentialSmoothing(actuals, params, horizon) {
   if (!actuals.length) return [];
   const sorted = [...actuals].sort((a,b) => a.month.localeCompare(b.month));
+  const win = Math.min(params.window, sorted.length);
+  const recent = sorted.slice(-win);
   const alpha = params.alpha || 0.3;
-  let smoothed = sorted[0].value;
-  for (let i = 1; i < sorted.length; i++) smoothed = alpha * sorted[i].value + (1-alpha) * smoothed;
+
+  // Compute smoothed level from the lookback window
+  let smoothed = recent[0].value;
+  for (let i = 1; i < recent.length; i++) smoothed = alpha * recent[i].value + (1-alpha) * smoothed;
+
+  // Compute a drift term from the window to capture recent trend direction
+  // This prevents the flat-line problem where exp smoothing ignores momentum
+  const halfWin = Math.max(2, Math.floor(recent.length / 2));
+  const firstHalfAvg = recent.slice(0, halfWin).reduce((s,p) => s + p.value, 0) / halfWin;
+  const secondHalfAvg = recent.slice(-halfWin).reduce((s,p) => s + p.value, 0) / halfWin;
+  const drift = (secondHalfAvg - firstHalfAvg) / halfWin;
+  // Dampen drift so it doesn't extrapolate forever
+  const phi = 0.85;
+
   const results = [], lastKey = sorted[sorted.length-1].month;
   for (let i = 1; i <= horizon; i++) {
-    results.push({ month: forecastMonth(lastKey, i), statValue: Math.round(smoothed) });
+    // Damped drift: drift * (phi + phi^2 + ... + phi^i)
+    let driftSum = 0;
+    for (let j = 1; j <= i; j++) driftSum += Math.pow(phi, j);
+    const fc = Math.max(0, Math.round(smoothed + drift * driftSum));
+    results.push({ month: forecastMonth(lastKey, i), statValue: fc });
   }
   return results;
 }
@@ -2245,9 +2264,14 @@ function renderAccuracyFromResults(backtest) {
     '</div>' +
     '<div class="metric-card">' +
       '<div class="metric-label">Months Tested</div>' +
-      '<div class="metric-value metric-neutral">' + backtest.monthsBacktested + '</div>' +
+      '<div class="metric-value ' + (backtest.monthsBacktested < 3 ? 'metric-bad' : 'metric-neutral') + '">' + backtest.monthsBacktested + '</div>' +
       '<div class="metric-sub">' + (backtest.skusTested > 1 ? backtest.skusTested + ' SKUs · ' : '') + 'Lag 2 mo</div>' +
-    '</div>';
+    '</div>' +
+    (backtest.monthsBacktested < 3 ?
+      '<div style="grid-column:1/-1; padding:8px 12px; background:#fef3c7; border:1px solid #fde68a; border-radius:6px; font-size:12px; color:#92400e;">' +
+        '<strong>Low confidence:</strong> Only ' + backtest.monthsBacktested + ' month(s) tested. ' +
+        'Accuracy may not reflect future performance. Consider a shorter lookback window or more historical data.' +
+      '</div>' : '');
 
   // Detail table
   const frag = document.createDocumentFragment();
