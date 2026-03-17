@@ -1968,7 +1968,8 @@ function findBestMethod() {
         div.classList.remove('hidden');
 
         // Generate forecast using the EXACT same path as bulkForecast
-        const horizon = state.isWeekly ? 78 : 18;
+        // Always 18: data is aggregated to monthly buckets above (r.month), so horizon = months
+        const horizon = 18;
         let results;
 
         if (usesEnsemble) {
