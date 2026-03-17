@@ -1834,6 +1834,7 @@ function bulkForecast() {
       for (const [key, rows] of combos) {
         const monthAgg = new Map();
         for (const r of rows) {
+          if (state.excludedMonths.has(r.month)) continue;
           const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
           prev.posCases += r.posCases || 0;
           prev.invoiceCases += r.invoiceCases || 0;
@@ -1906,6 +1907,7 @@ function findBestMethod() {
       const monthAgg = new Map();
       for (const r of filtered) {
         if (r.posCases != null || r.invoiceCases != null || r.orderCases != null) {
+          if (state.excludedMonths.has(r.month)) continue;
           if (r.forecast != null && r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
           const prev = monthAgg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
           prev.posCases += r.posCases || 0;
