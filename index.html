@@ -2366,14 +2366,21 @@ function getDashboardRows() {
 
   // Build weekly-level rows if data is weekly
   if (state.isWeekly) {
-    // Weekly stat forecast map (results may be weekly keys like YYYY-MM-WN)
-    const weekStatMap = new Map(statResults.map(r => [r.month, r.statValue]));
-
-    // Roll up weekly stat forecasts to monthly
+    // Stat forecast results are monthly (keys like "2026-03-15").
+    // Disaggregate to weekly using the 4-4-5 calendar.
+    const weekStatMap = new Map();
     const monthlyStatMap = new Map();
-    for (const [k, v] of weekStatMap) {
-      const monthKey = k.includes('-W') ? k.split('-W')[0] + '-15' : k;
-      monthlyStatMap.set(monthKey, (monthlyStatMap.get(monthKey) || 0) + v);
+    for (const r of statResults) {
+      const monthKey = r.month; // e.g. "2026-03-15"
+      const moMatch = monthKey.match(/^(\d{4})-(\d{2})/);
+      const shortKey = moMatch ? moMatch[1] + '-' + moMatch[2] : monthKey.substring(0, 7);
+      monthlyStatMap.set(monthKey, (monthlyStatMap.get(monthKey) || 0) + r.statValue);
+      // Distribute to weeks using weeksPerMonthConfig
+      const wks = moMatch ? (state.weeksPerMonthConfig[parseInt(moMatch[2]) - 1] || 4) : 4;
+      const weeklyVal = Math.round(r.statValue / wks);
+      for (let w = 1; w <= wks; w++) {
+        weekStatMap.set(shortKey + '-W' + w, weeklyVal);
+      }
     }
 
     // Aggregate actuals and existing forecasts by timeKey
