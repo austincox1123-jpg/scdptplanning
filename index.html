@@ -1370,15 +1370,8 @@ function loadData(rows, fileName) {
   state.viewMode = 'month';
 
 
-  // Initialize weeks-per-month from upload data or default 4-4-5
+  // Always use the HTML weeks-per-month editor config (4-4-5 default)
   state.weeksPerMonthConfig = [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5]; // index 0=Jan
-  // If upload had MAX_WKS_PER_MONTH, seed the config from it
-  for (const r of rows) {
-    if (r.maxWksPerMonth != null) {
-      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
-      if (moMatch) state.weeksPerMonthConfig[parseInt(moMatch[2]) - 1] = r.maxWksPerMonth;
-    }
-  }
   buildWeeksMap();
 }
 
