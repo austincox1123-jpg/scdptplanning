@@ -3610,6 +3610,101 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
   });
 }
 
+// Builds weekly-level export rows — keeps week granularity, disaggregates forecast to weeks
+function buildWeeklyExportRows(customerFilter, productFilter, skuForecastMap, overrides) {
+  const params = getConfigParams();
+  const methodLabel = params.method;
+
+  const sourceRows = state.parsedRows.filter(r => {
+    if (customerFilter && r.customerName !== customerFilter) return false;
+    if (productFilter && r.productNumber !== productFilter) return false;
+    return true;
+  });
+
+  // Build stat forecast map per SKU: month => statValue
+  const skuStatMaps = new Map();
+  for (const [key, results] of Object.entries(skuForecastMap)) {
+    skuStatMaps.set(key, new Map(results.map(f => [f.month, f.statValue])));
+  }
+
+  // Collect all existing weekly rows
+  const weeklyRows = [];
+  for (const r of sourceRows) {
+    const fcKey = r.customerName + '|' + r.productNumber;
+    const statMap = skuStatMaps.get(fcKey);
+    const monthStat = statMap ? statMap.get(r.month) : null;
+
+    // Disaggregate monthly stat forecast to weeks
+    const wks = state.weeksPerMonthConfig[parseInt(r.month.split('-')[1]) - 1] || 4;
+    const weeklyStat = monthStat != null ? Math.round(monthStat / wks) : null;
+
+    const weekKey = r.month.replace(/-\d+$/, '') + (r.weekNumber ? '-W' + r.weekNumber : '');
+    const ov = overrides[fcKey + '|' + weekKey] ?? overrides[fcKey + '|' + r.month];
+    const updatedForecast = ov ?? weeklyStat ?? null;
+
+    const parts = r.month.split('-');
+    const row = {
+      CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
+      PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
+      YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
+      WEEK_NUMBER_OF_MONTH: r.weekNumber || null,
+      'POS_CASES': r.posCases, 'INVOICE_CASES': r.invoiceCases,
+      'ORDER_CASES': r.orderCases, FORECAST: r.forecast,
+      MAX_WKS_PER_MONTH: wks,
+      'WEEKLY STAT FORECAST': weeklyStat,
+      'UPDATED FORECAST': updatedForecast,
+      'METHOD': updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null,
+    };
+    weeklyRows.push(row);
+  }
+
+  // Add forecast-only weeks for future months that don't have source rows
+  const seenKeys = new Set(sourceRows.map(r => r.customerName + '|' + r.productNumber + '|' + r.month + '|' + (r.weekNumber || '')));
+  for (const [fcKey, statMap] of skuStatMaps) {
+    const [customer, product] = fcKey.split('|');
+    // Find meta from any existing row for this SKU
+    const sampleRow = sourceRows.find(r => r.customerName === customer && r.productNumber === product);
+    if (!sampleRow) continue;
+
+    for (const [month, statValue] of statMap) {
+      const wks = state.weeksPerMonthConfig[parseInt(month.split('-')[1]) - 1] || 4;
+      const weeklyStat = Math.round(statValue / wks);
+      const parts = month.split('-');
+
+      for (let w = 1; w <= wks; w++) {
+        const checkKey = customer + '|' + product + '|' + month + '|' + w;
+        if (seenKeys.has(checkKey)) continue;
+
+        const weekKey = month.replace(/-\d+$/, '') + '-W' + w;
+        const ov = overrides[fcKey + '|' + weekKey] ?? overrides[fcKey + '|' + month];
+
+        weeklyRows.push({
+          CUSTOMER_NAME: customer, BRAND: sampleRow.brand, TYPE: sampleRow.type, FORMATION: sampleRow.formation,
+          PRODUCTNAME: sampleRow.productName, PRODUCTNUMBER: product,
+          YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
+          WEEK_NUMBER_OF_MONTH: w,
+          'POS_CASES': null, 'INVOICE_CASES': null, 'ORDER_CASES': null, FORECAST: null,
+          MAX_WKS_PER_MONTH: wks,
+          'WEEKLY STAT FORECAST': weeklyStat,
+          'UPDATED FORECAST': ov ?? weeklyStat,
+          'METHOD': (ov ?? weeklyStat) != null ? (ov != null ? 'Override' : methodLabel) : null,
+        });
+      }
+    }
+  }
+
+  // Sort by customer, product, year, month, week
+  weeklyRows.sort((a, b) =>
+    (a.CUSTOMER_NAME || '').localeCompare(b.CUSTOMER_NAME || '') ||
+    (a.PRODUCTNUMBER || '').localeCompare(b.PRODUCTNUMBER || '') ||
+    (a.YEAR || 0) - (b.YEAR || 0) ||
+    (a.MONTH_NUMBER_OF_YEAR || 0) - (b.MONTH_NUMBER_OF_YEAR || 0) ||
+    (a.WEEK_NUMBER_OF_MONTH || 0) - (b.WEEK_NUMBER_OF_MONTH || 0)
+  );
+
+  return weeklyRows;
+}
+
 // Builds variance report rows: future months where both existing and updated forecast exist
 function buildVarianceRows(exportRows) {
   return exportRows
@@ -3632,15 +3727,21 @@ function buildVarianceRows(exportRows) {
     });
 }
 
-function addExportSheets(wb, exportRows) {
-  // Tab 1: All data (mirrors upload format)
+function addExportSheets(wb, exportRows, customerFilter, productFilter) {
+  // Tab 1: All data (mirrors upload format — monthly)
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exportRows), 'All Data');
 
-  // Tab 2: Future only (rows that have an UPDATED FORECAST)
+  // Tab 2: Weekly detail (disaggregated to week level with 4-4-5)
+  if (state.isWeekly) {
+    const weeklyRows = buildWeeklyExportRows(customerFilter || '', productFilter || '', state.skuForecasts, state.overrides);
+    if (weeklyRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(weeklyRows), 'Weekly Detail');
+  }
+
+  // Tab 3: Future only (rows that have an UPDATED FORECAST)
   const futureRows = exportRows.filter(r => r['UPDATED FORECAST'] != null);
   if (futureRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(futureRows), 'Future Forecast');
 
-  // Tab 3: Variance report
+  // Tab 4: Variance report
   const varianceRows = buildVarianceRows(exportRows);
   if (varianceRows.length) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(varianceRows), 'Variance Report');
 }
@@ -3652,7 +3753,7 @@ function exportExcel() {
       try {
         const wb = XLSX.utils.book_new();
         const rows = buildExportRows(state.filters.customer, state.filters.product, state.skuForecasts, state.overrides);
-        addExportSheets(wb, rows);
+        addExportSheets(wb, rows, state.filters.customer, state.filters.product);
         XLSX.writeFile(wb, 'forecast_' + (state.filters.customer||'all') + '_' + (state.filters.product||'all') + '.xlsx');
         hideLoading();
         showToast('Excel exported successfully', 'success');
@@ -3674,7 +3775,7 @@ function exportAllForecasts() {
       try {
         const wb = XLSX.utils.book_new();
         const allRows = buildExportRows('', '', state.skuForecasts, state.overrides);
-        addExportSheets(wb, allRows);
+        addExportSheets(wb, allRows, '', '');
         XLSX.writeFile(wb, 'forecast_all_skus.xlsx');
         hideLoading();
         showToast('Exported all forecasts (' + allRows.length + ' rows)', 'success');
