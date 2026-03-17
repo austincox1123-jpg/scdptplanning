@@ -1629,30 +1629,25 @@ function runForecast() {
     requestAnimationFrame(() => {
       try {
         const filtered = getFilteredRows();
+        // Aggregate by r.month (monthly buckets) — same as findBestMethod and bulkForecast
         const agg = new Map();
         for (const r of filtered) {
-          // Include rows with any actual data (even zeros from gap-filling)
           if (r.posCases != null || r.invoiceCases != null || r.orderCases != null) {
-            // Skip excluded months
             if (state.excludedMonths.has(r.month)) continue;
-            // Skip future-only rows (forecast but no actuals at all)
             if (r.forecast != null && r.posCases == null && r.invoiceCases == null && r.orderCases == null) continue;
-            const tk = timeKey(r);
-            const prev = agg.get(tk) || { month: tk, posCases: 0, invoiceCases: 0, orderCases: 0 };
+            const prev = agg.get(r.month) || { month: r.month, posCases: 0, invoiceCases: 0, orderCases: 0 };
             prev.posCases += r.posCases || 0;
             prev.invoiceCases += r.invoiceCases || 0;
             prev.orderCases += r.orderCases || 0;
-            agg.set(tk, prev);
+            agg.set(r.month, prev);
           }
         }
         const actualData = [...agg.values()].sort((a,b) => a.month.localeCompare(b.month));
         if (!actualData.length) { hideLoading(); showToast('No actual data found for current filters', 'error'); return; }
 
-        // Debug: log what the engine sees
         const params = getConfigParams();
-        console.log('Forecast input (' + params.source + ', ' + actualData.length + ' periods):', actualData.map(a => a.month + ': ' + (params.source === 'pos' ? a.posCases : params.source === 'invoice' ? a.invoiceCases : params.source === 'order' ? a.orderCases : 'blended')).join(', '));
-        // Weekly: ~78 weeks for 18 months. Monthly: 18.
-        const horizon = state.isWeekly ? 78 : 18;
+        // Always 18 months: data is aggregated to monthly buckets
+        const horizon = 18;
         const results = runForecastEngine(actualData, params, horizon);
         const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
 
