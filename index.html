@@ -1988,70 +1988,25 @@ function findBestMethod() {
         div.innerHTML = html;
         div.classList.remove('hidden');
 
-        // Generate forecast using the EXACT same path as bulkForecast
-        // Always 18: data is aggregated to monthly buckets above (r.month), so horizon = months
-        const horizon = 18;
-        let results;
-
-        if (usesEnsemble) {
-          const ensembleResults = best.ensemble.map(e => {
-            const p = { ...baseParams, method: e.method, window: e.window, alpha: e.alpha };
-            return runForecastEngine(actualData, p, horizon);
-          }).filter(r => r.length > 0);
-          if (ensembleResults.length >= 2) {
-            results = ensembleResults[0].map((f, i) => ({
-              month: f.month,
-              statValue: Math.round(ensembleResults.reduce((s, er) => s + (er[i]?.statValue || 0), 0) / ensembleResults.length)
-            }));
-          }
+        // Set UI dropdowns to match the best method
+        const methodSelect = document.getElementById('cfg-method');
+        if (methodSelect.querySelector('option[value="' + best.method + '"]')) {
+          methodSelect.value = best.method;
         }
-
-        if (!results) {
-          const params = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
-          results = runForecastEngine(actualData, params, horizon);
-        }
-
-        // Store results using the same key format as bulkForecast
-        const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
-        state.previewResults[key] = results;
-        state.forecastResults[key] = results;
-        state.previewFiltered = filtered;
-        state.previewParams = { ...baseParams, method: best.method, window: best.window, alpha: best.alpha };
-
-        // Also store in skuForecasts using customer|product key (matches bulk)
-        if (state.filters.customer && state.filters.product) {
-          const skuKey = state.filters.customer + '|' + state.filters.product;
-          state.skuForecasts[skuKey] = results;
-        }
-
-        // Update UI dropdowns to reflect what was selected
-        if (!usesEnsemble) {
-          const methodSelect = document.getElementById('cfg-method');
-          if (methodSelect.querySelector('option[value="' + best.method + '"]')) {
-            methodSelect.value = best.method;
-          }
-          document.getElementById('cfg-window').value = best.window;
-          document.getElementById('window-val').textContent = best.window;
-          if (needsAlpha) {
-            document.getElementById('cfg-alpha').value = best.alpha;
-            document.getElementById('alpha-val').textContent = best.alpha.toFixed(1);
-          }
+        document.getElementById('cfg-window').value = best.window;
+        document.getElementById('window-val').textContent = best.window;
+        if (needsAlpha) {
+          document.getElementById('cfg-alpha').value = best.alpha;
+          document.getElementById('alpha-val').textContent = best.alpha.toFixed(1);
         }
 
         document.getElementById('save-forecast-btn').classList.remove('hidden');
         onConfigChange();
 
-        if (!usesEnsemble) {
-          // For single-method: dropdowns are already set, so run through
-          // the standard runForecast path for full consistency (chart + backtest)
-          hideLoading();
-          runForecast();
-        } else {
-          // Ensemble: results already stored above, just render
-          invalidateCache();
-          renderDashboard();
-          hideLoading();
-        }
+        // Run forecast through the EXACT same runForecast() path as Recalculate.
+        // This guarantees identical results — one code path, no duplication.
+        hideLoading();
+        runForecast();
         showToast('Best: ' + label + ' · ' + classLabel + ' (' + acc + '%)', 'success');
         return;
       }
