@@ -1516,14 +1516,21 @@ function autoDetectOutliers() {
   const params = getConfigParams();
   const sourceField = params.source === 'pos' ? 'posCases' : params.source === 'invoice' ? 'invoiceCases' : 'orderCases';
 
-  // Aggregate by month
-  const monthVals = new Map();
+  // Aggregate by month, then normalize to weekly rates so 5-week months
+  // aren't falsely flagged as outliers (they're naturally ~25% higher)
+  const monthRaw = new Map();
   for (const r of filtered) {
     if (state.excludedMonths.has(r.month)) continue;
     const v = r[sourceField] || 0;
-    if (v > 0) monthVals.set(r.month, (monthVals.get(r.month) || 0) + v);
+    if (v > 0) monthRaw.set(r.month, (monthRaw.get(r.month) || 0) + v);
   }
-  if (monthVals.size < 6) { showToast('Need at least 6 months to detect outliers', 'error'); return; }
+  if (monthRaw.size < 6) { showToast('Need at least 6 months to detect outliers', 'error'); return; }
+
+  // Normalize to weekly rate: divide by weeks-per-month to remove 4-4-5 calendar effect
+  const monthVals = new Map();
+  for (const [month, val] of monthRaw) {
+    monthVals.set(month, val / getWeeksForMonth(month));
+  }
 
   const values = [...monthVals.values()].sort((a, b) => a - b);
   const q1 = values[Math.floor(values.length * 0.25)];
