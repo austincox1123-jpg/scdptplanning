@@ -550,6 +550,28 @@
         </div>
       </div>
 
+      <!-- Momentum: Last 3 vs Prior 3 months by Brand/Type/Formation -->
+      <div class="card p-6 mt-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-sm font-semibold text-gray-700">Momentum — Last 3 vs Prior 3 Included Months</h2>
+          <div class="text-xs text-gray-400" id="momentum-period-label"></div>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+          <div>
+            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Brand</h3>
+            <div id="momentum-by-brand"></div>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Type</h3>
+            <div id="momentum-by-type"></div>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Formation</h3>
+            <div id="momentum-by-formation"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Item Attribution: Brand > Type > Formation -->
       <div class="card p-6 mt-6">
         <div class="flex justify-between items-center mb-4">
@@ -3202,14 +3224,63 @@ function computeAnalyticsData() {
   const invoiceYTD_CY = ytd(cyMonthly.invoice, throughMonth);
   const invoiceYTD_PY = ytd(pyMonthly.invoice, throughMonth);
 
-  // Momentum: last 3 actual months vs prior 3
-  const last3Start = Math.max(0, throughMonth - 2);
-  const prior3Start = Math.max(0, last3Start - 3);
-  const last3 = cyMonthly.orders.slice(last3Start, throughMonth + 1).reduce((s, v) => s + v, 0);
-  const prior3 = cyMonthly.orders.slice(prior3Start, last3Start).reduce((s, v) => s + v, 0);
+  // Momentum: last 3 included months vs months 4-6 (prior 3)
+  // Get sorted list of included CY months that have actual data
+  const includedMonths = [];
+  for (let i = 0; i <= throughMonth; i++) {
+    const mk = cy + '-' + String(i + 1).padStart(2, '0') + '-15';
+    if (!state.excludedMonths.has(mk) && (cyMonthly.orders[i] > 0 || cyMonthly.pos[i] > 0)) {
+      includedMonths.push(i);
+    }
+  }
+  const last3Months = includedMonths.slice(-3);
+  const prior3Months = includedMonths.slice(-6, -3);
+
+  const sumMonths = (arr, indices) => indices.reduce((s, i) => s + (arr[i] || 0), 0);
+  const last3Ord = sumMonths(cyMonthly.orders, last3Months);
+  const prior3Ord = sumMonths(cyMonthly.orders, prior3Months);
+  const last3Pos = sumMonths(cyMonthly.pos, last3Months);
+  const prior3Pos = sumMonths(cyMonthly.pos, prior3Months);
 
   // Pct change helper
   const pctChg = (cur, prev) => prev > 0 ? ((cur - prev) / prev * 100) : (cur > 0 ? 100 : 0);
+
+  // Momentum by dimension: brand, type, formation
+  // For each dimension value, compute last 3 vs prior 3 months (orders + POS)
+  function computeMomentumByDim(dimField) {
+    const dimData = new Map(); // dimValue => { last3Ord, prior3Ord, last3Pos, prior3Pos }
+    for (const r of rows) {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (!moMatch) continue;
+      const yr = parseInt(moMatch[1]);
+      if (yr !== cy) continue;
+      const mi = parseInt(moMatch[2]) - 1;
+      if (state.excludedMonths.has(r.month)) continue;
+      if ((r.orderCases || 0) <= 0 && (r.posCases || 0) <= 0) continue;
+
+      const dim = r[dimField] || 'Unknown';
+      if (!dimData.has(dim)) dimData.set(dim, { last3Ord: 0, prior3Ord: 0, last3Pos: 0, prior3Pos: 0 });
+      const d = dimData.get(dim);
+
+      if (last3Months.includes(mi)) {
+        d.last3Ord += r.orderCases || 0;
+        d.last3Pos += r.posCases || 0;
+      } else if (prior3Months.includes(mi)) {
+        d.prior3Ord += r.orderCases || 0;
+        d.prior3Pos += r.posCases || 0;
+      }
+    }
+    const items = [];
+    for (const [name, d] of dimData) {
+      items.push({
+        name,
+        ordLast3: d.last3Ord, ordPrior3: d.prior3Ord, ordPct: pctChg(d.last3Ord, d.prior3Ord),
+        posLast3: d.last3Pos, posPrior3: d.prior3Pos, posPct: pctChg(d.last3Pos, d.prior3Pos),
+      });
+    }
+    items.sort((a, b) => Math.abs(b.ordPct) - Math.abs(a.ordPct));
+    return items;
+  }
 
   // Build CY trend line: actuals + forecast continuation
   const cyTrend = new Array(12).fill(null);
@@ -3245,14 +3316,23 @@ function computeAnalyticsData() {
     return items;
   }
 
+  // Month labels for the momentum period descriptions
+  const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  const last3Label = last3Months.length ? MONTH_ABBR[last3Months[0]] + '-' + MONTH_ABBR[last3Months[last3Months.length-1]] : '';
+  const prior3Label = prior3Months.length ? MONTH_ABBR[prior3Months[0]] + '-' + MONTH_ABBR[prior3Months[prior3Months.length-1]] : '';
+
   return {
     cy, py, throughMonth,
     kpis: {
       orders: { cy: ordersYTD_CY, py: ordersYTD_PY, pct: pctChg(ordersYTD_CY, ordersYTD_PY), sparkline: cyMonthly.orders, pySparkline: pyMonthly.orders },
       pos: { cy: posYTD_CY, py: posYTD_PY, pct: pctChg(posYTD_CY, posYTD_PY), sparkline: cyMonthly.pos, pySparkline: pyMonthly.pos },
       invoice: { cy: invoiceYTD_CY, py: invoiceYTD_PY, pct: pctChg(invoiceYTD_CY, invoiceYTD_PY), sparkline: cyMonthly.invoice, pySparkline: pyMonthly.invoice },
-      momentum: { last3, prior3, pct: pctChg(last3, prior3) },
+      momentum: { last3Ord, prior3Ord, ordPct: pctChg(last3Ord, prior3Ord), last3Pos, prior3Pos, posPct: pctChg(last3Pos, prior3Pos) },
     },
+    momentumByBrand: computeMomentumByDim('brand'),
+    momentumByType: computeMomentumByDim('type'),
+    momentumByFormation: computeMomentumByDim('formation'),
+    momentumLabels: { last3: last3Label, prior3: prior3Label, cy },
     trend: { cy: cyTrend, py: pyTrend, fcst: fcstTrend },
     byCustomer: buildBreakdown(custCY, custPY, custPosCY, custPosPY),
     byBrand: buildBreakdown(brandCY, brandPY, brandPosCY, brandPosPY),
@@ -3268,7 +3348,52 @@ function renderAnalytics() {
   renderBreakdown('analytics-by-customer', data.byCustomer, 'customer');
   renderBreakdown('analytics-by-brand', data.byBrand, 'brand');
   renderBreakdown('analytics-by-type', data.byType, 'type');
+  renderMomentumSection(data);
   renderAttribution();
+}
+
+function renderMomentumSection(data) {
+  const labels = data.momentumLabels;
+  const periodEl = document.getElementById('momentum-period-label');
+  if (periodEl) {
+    periodEl.textContent = labels.last3 && labels.prior3
+      ? labels.cy + ': ' + labels.last3 + ' vs ' + labels.prior3
+      : '';
+  }
+  renderMomentumDim('momentum-by-brand', data.momentumByBrand, labels);
+  renderMomentumDim('momentum-by-type', data.momentumByType, labels);
+  renderMomentumDim('momentum-by-formation', data.momentumByFormation, labels);
+}
+
+function renderMomentumDim(containerId, items, labels) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!items || !items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No data</div>'; return; }
+
+  container.innerHTML = items.slice(0, 10).map(item => {
+    const ordCls = item.ordPct > 0.5 ? 'kpi-up' : item.ordPct < -0.5 ? 'kpi-down' : 'kpi-flat';
+    const ordArrow = item.ordPct > 0.5 ? '\u25B2' : item.ordPct < -0.5 ? '\u25BC' : '';
+    const posCls = item.posPct > 0.5 ? 'kpi-up' : item.posPct < -0.5 ? 'kpi-down' : 'kpi-flat';
+    const posArrow = item.posPct > 0.5 ? '\u25B2' : item.posPct < -0.5 ? '\u25BC' : '';
+
+    return '<div style="padding:6px 0; border-bottom:1px solid #f3f4f6;">' +
+      '<div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:3px;">' + sanitize(item.name) + '</div>' +
+      '<div style="display:flex; gap:12px; font-size:11px;">' +
+        '<div style="flex:1;">' +
+          '<span style="color:#6b7280;">Orders</span> ' +
+          '<span style="font-weight:600;">' + fmt(item.ordLast3) + '</span>' +
+          '<span style="color:#9ca3af;"> vs ' + fmt(item.ordPrior3) + '</span> ' +
+          '<span class="' + ordCls + '" style="font-weight:600;">' + ordArrow + Math.abs(item.ordPct).toFixed(1) + '%</span>' +
+        '</div>' +
+        '<div style="flex:1;">' +
+          '<span style="color:#6b7280;">POS</span> ' +
+          '<span style="font-weight:600;">' + fmt(item.posLast3) + '</span>' +
+          '<span style="color:#9ca3af;"> vs ' + fmt(item.posPrior3) + '</span> ' +
+          '<span class="' + posCls + '" style="font-weight:600;">' + posArrow + Math.abs(item.posPct).toFixed(1) + '%</span>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
 }
 
 function renderAnalyticsFilterBar() {
