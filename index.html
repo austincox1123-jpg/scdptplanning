@@ -529,6 +529,14 @@
         </div>
       </div>
 
+      <!-- Executive Summary — Key Insights -->
+      <div class="card p-6 mb-6" id="executive-summary-card" style="display:none;">
+        <h2 class="text-sm font-semibold text-gray-700 mb-3" style="display:flex;align-items:center;gap:6px;">
+          <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2563eb;"></span> Key Insights
+        </h2>
+        <div id="executive-summary-bullets" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
       <div class="analytics-layout">
         <!-- Left: Stacked KPI cards -->
         <div class="analytics-left" id="analytics-kpis"></div>
@@ -593,6 +601,41 @@
             <div id="fcst-trend-formation"></div>
           </div>
         </div>
+      </div>
+
+      <!-- Risk & Opportunity Flags -->
+      <div class="card p-6 mt-6" id="risk-opp-card" style="display:none;">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="text-sm font-semibold text-gray-700">Risk &amp; Opportunity Flags</h2>
+          <div class="text-xs text-gray-400">Top signals by magnitude</div>
+        </div>
+        <p class="text-xs text-gray-500 mb-4">Compares POS trends, order trends, and forecast levels to identify upside, overforecast risk, destocking, or stocking signals.</p>
+        <div id="risk-opp-container"></div>
+      </div>
+
+      <!-- Top Movers -->
+      <div class="card p-6 mt-6" id="top-movers-card" style="display:none;">
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="text-sm font-semibold text-gray-700">Top Movers — Biggest Volume Changes</h2>
+          <div class="text-xs text-gray-400" id="top-movers-period-label"></div>
+        </div>
+        <p class="text-xs text-gray-500 mb-4">Last 3 included months vs prior 3 months. Shows the largest absolute volume shifts.</p>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:24px;">
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:#16a34a;">Top Gainers</h3>
+            <div id="top-movers-gainers"></div>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold uppercase tracking-wide mb-2" style="color:#dc2626;">Top Decliners</h3>
+            <div id="top-movers-decliners"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Account Scorecards -->
+      <div class="card p-6 mt-6" id="account-scorecards-card" style="display:none;">
+        <h2 class="text-sm font-semibold text-gray-700 mb-4">Account Scorecards</h2>
+        <div id="account-scorecards-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap:12px;"></div>
       </div>
 
       <!-- Item Attribution: Brand > Type > Formation -->
@@ -3409,6 +3452,187 @@ function computeAnalyticsData() {
   const last3Label = last3Months.length ? MONTH_ABBR[last3Months[0]] + '-' + MONTH_ABBR[last3Months[last3Months.length-1]] : '';
   const prior3Label = prior3Months.length ? MONTH_ABBR[prior3Months[0]] + '-' + MONTH_ABBR[prior3Months[prior3Months.length-1]] : '';
 
+  // ---- Risk & Opportunity Flags ----
+  // For each brand+type combo, assess POS trend, order trend, and forecast direction
+  function computeRiskOppFlags() {
+    const itemMap = new Map(); // "brand|type" => { last3Ord, prior3Ord, last3Pos, prior3Pos, fcstAvg }
+    for (const r of rows) {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (!moMatch) continue;
+      const yr = parseInt(moMatch[1]);
+      if (yr !== cy) continue;
+      const mi = parseInt(moMatch[2]) - 1;
+      if (state.excludedMonths.has(r.month)) continue;
+      const key = (r.brand || 'Unknown') + '|' + (r.type || 'Unknown');
+      if (!itemMap.has(key)) itemMap.set(key, { last3Ord: 0, prior3Ord: 0, last3Pos: 0, prior3Pos: 0, fcstTotal: 0, fcstMonths: 0 });
+      const d = itemMap.get(key);
+      if (last3Months.includes(mi)) { d.last3Ord += r.orderCases || 0; d.last3Pos += r.posCases || 0; }
+      else if (prior3Months.includes(mi)) { d.prior3Ord += r.orderCases || 0; d.prior3Pos += r.posCases || 0; }
+      if (r.forecast != null && r.forecast > 0 && mi > throughMonth) { d.fcstTotal += r.forecast; d.fcstMonths++; }
+    }
+    const flags = [];
+    for (const [key, d] of itemMap) {
+      const [brand, type] = key.split('|');
+      const ordPct = pctChg(d.last3Ord, d.prior3Ord);
+      const posPct = pctChg(d.last3Pos, d.prior3Pos);
+      const fcstAvg = d.fcstMonths > 0 ? d.fcstTotal / d.fcstMonths : 0;
+      const recentOrdAvg = last3Months.length > 0 ? d.last3Ord / last3Months.length : 0;
+      const fcstVsOrd = recentOrdAvg > 0 ? pctChg(fcstAvg, recentOrdAvg) : 0;
+      let signal = null, magnitude = 0;
+      // Opportunity: POS growing (>10%) but forecast flat or declining relative to orders
+      if (posPct > 10 && fcstVsOrd < 5) { signal = 'opportunity'; magnitude = posPct; }
+      // Risk: POS declining (<-10%) but forecast stays flat or growing
+      else if (posPct < -10 && fcstVsOrd > -5) { signal = 'risk'; magnitude = Math.abs(posPct); }
+      // Destocking: POS relatively stable (within +/-15%) but orders declining (<-15%)
+      else if (Math.abs(posPct) < 15 && ordPct < -15) { signal = 'destocking'; magnitude = Math.abs(ordPct); }
+      // Stocking: POS relatively stable (within +/-15%) but orders spiking (>15%)
+      else if (Math.abs(posPct) < 15 && ordPct > 15) { signal = 'stocking'; magnitude = ordPct; }
+      if (signal && (d.last3Ord > 0 || d.last3Pos > 0)) {
+        flags.push({ name: brand + ' / ' + type, brand, type, signal, magnitude, ordPct, posPct, fcstAvg: Math.round(fcstAvg), recentOrdAvg: Math.round(recentOrdAvg) });
+      }
+    }
+    flags.sort((a, b) => b.magnitude - a.magnitude);
+    return flags.slice(0, 8);
+  }
+
+  // ---- Top Movers (product-level) ----
+  function computeTopMovers() {
+    // Brand-level movers from existing momentum data
+    const brandMovers = computeMomentumByDim('brand');
+    // Product-level (formation) movers
+    const formMovers = computeMomentumByDim('formation');
+    // Compute absolute change and split into gainers/decliners
+    function splitMovers(items) {
+      const withDelta = items.map(it => ({
+        name: it.name,
+        ordLast3: it.ordLast3, ordPrior3: it.ordPrior3, ordPct: it.ordPct,
+        posLast3: it.posLast3, posPrior3: it.posPrior3, posPct: it.posPct,
+        ordDelta: it.ordLast3 - it.ordPrior3, posDelta: it.posLast3 - it.posPrior3,
+      }));
+      const gainers = withDelta.filter(it => it.ordDelta > 0).sort((a, b) => b.ordDelta - a.ordDelta).slice(0, 5);
+      const decliners = withDelta.filter(it => it.ordDelta < 0).sort((a, b) => a.ordDelta - b.ordDelta).slice(0, 5);
+      return { gainers, decliners };
+    }
+    // Merge brand + formation, pick the largest absolute changes across both
+    const combined = [...brandMovers, ...formMovers];
+    // Deduplicate by name, keeping the larger magnitude
+    const seen = new Map();
+    for (const it of combined) {
+      if (!seen.has(it.name) || Math.abs(it.ordLast3 - it.ordPrior3) > Math.abs(seen.get(it.name).ordLast3 - seen.get(it.name).ordPrior3)) {
+        seen.set(it.name, it);
+      }
+    }
+    return splitMovers([...seen.values()]);
+  }
+
+  // ---- Account Scorecards ----
+  function computeAccountScorecards() {
+    const custData = new Map(); // customer => { ordCY, ordPY, posCY, posPY, fcstFuture }
+    for (const r of rows) {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (!moMatch) continue;
+      const yr = parseInt(moMatch[1]);
+      const mi = parseInt(moMatch[2]) - 1;
+      if (state.excludedMonths.has(r.month)) continue;
+      const c = r.customerName || 'Unknown';
+      if (!custData.has(c)) custData.set(c, { ordCY: 0, ordPY: 0, posCY: 0, posPY: 0, fcstFuture: 0 });
+      const d = custData.get(c);
+      if (yr === cy && mi <= throughMonth) {
+        d.ordCY += r.orderCases || 0;
+        d.posCY += r.posCases || 0;
+      } else if (yr === py && mi <= throughMonth) {
+        d.ordPY += r.orderCases || 0;
+        d.posPY += r.posCases || 0;
+      }
+      // Forecast for future months
+      if (yr === cy && mi > throughMonth && r.forecast != null && r.forecast > 0) {
+        d.fcstFuture += r.forecast;
+      }
+    }
+    const cards = [];
+    for (const [name, d] of custData) {
+      const ordPctChg = pctChg(d.ordCY, d.ordPY);
+      const posPctChg = pctChg(d.posCY, d.posPY);
+      // Health: green if both growing (>-5%) and forecast exists; yellow if mixed; red if both declining or no forecast when declining
+      let health = 'yellow';
+      if (ordPctChg > -5 && posPctChg > -5 && d.fcstFuture > 0) health = 'green';
+      else if (ordPctChg < -10 && posPctChg < -10) health = 'red';
+      else if (ordPctChg < -10 || posPctChg < -10) health = 'red';
+      else if (d.fcstFuture <= 0 && (ordPctChg < -5 || posPctChg < -5)) health = 'red';
+      cards.push({ name, ordCY: d.ordCY, ordPY: d.ordPY, ordPct: ordPctChg, posCY: d.posCY, posPY: d.posPY, posPct: posPctChg, fcstFuture: d.fcstFuture, health });
+    }
+    cards.sort((a, b) => b.ordCY - a.ordCY);
+    return cards;
+  }
+
+  // ---- Executive Summary bullets ----
+  function computeExecutiveSummary() {
+    const bullets = [];
+    // 1. Overall trend direction
+    const ordPct = pctChg(ordersYTD_CY, ordersYTD_PY);
+    const posPctVal = pctChg(posYTD_CY, posYTD_PY);
+    const ordDir = ordPct > 2 ? 'up' : ordPct < -2 ? 'down' : 'flat';
+    const posDir = posPctVal > 2 ? 'up' : posPctVal < -2 ? 'down' : 'flat';
+    const ordArrowStr = ordDir === 'up' ? '+' : ordDir === 'down' ? '' : '';
+    const posArrowStr = posDir === 'up' ? '+' : posDir === 'down' ? '' : '';
+    bullets.push({
+      type: ordDir === 'up' ? 'positive' : ordDir === 'down' ? 'negative' : 'neutral',
+      text: 'YTD Orders are ' + ordDir + ' ' + ordArrowStr + ordPct.toFixed(1) + '% vs PY. POS is ' + posDir + ' ' + posArrowStr + posPctVal.toFixed(1) + '% vs PY.'
+    });
+
+    // 2. Biggest mover by brand
+    const brandBreakdown = buildBreakdown(brandCY, brandPY, brandPosCY, brandPosPY);
+    if (brandBreakdown.length > 0) {
+      const sorted = [...brandBreakdown].sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct));
+      const top = sorted[0];
+      if (Math.abs(top.pct) > 1) {
+        const dir = top.pct > 0 ? 'grew' : 'declined';
+        bullets.push({
+          type: top.pct > 0 ? 'positive' : 'negative',
+          text: 'Biggest mover: ' + top.name + ' ' + dir + ' ' + (top.pct > 0 ? '+' : '') + top.pct.toFixed(1) + '% in orders vs PY (' + fmt(top.cy) + ' vs ' + fmt(top.py) + ').'
+        });
+      }
+    }
+
+    // 3. Forecast alignment
+    const fcstFutureTotal = fcstMonthly.slice(throughMonth + 1).reduce((s, v) => s + v, 0);
+    const recentRunRate = last3Months.length > 0 ? last3Ord / last3Months.length : 0;
+    const remainingMonths = 11 - throughMonth;
+    if (fcstFutureTotal > 0 && recentRunRate > 0 && remainingMonths > 0) {
+      const fcstAvgMo = fcstFutureTotal / remainingMonths;
+      const fcstVsRun = pctChg(fcstAvgMo, recentRunRate);
+      const fcstDir = fcstVsRun > 10 ? 'above' : fcstVsRun < -10 ? 'below' : 'aligned with';
+      bullets.push({
+        type: Math.abs(fcstVsRun) <= 10 ? 'positive' : 'warning',
+        text: 'Existing forecast averages ' + fmt(Math.round(fcstAvgMo)) + '/mo, ' + fcstDir + ' the recent order run rate of ' + fmt(Math.round(recentRunRate)) + '/mo (' + (fcstVsRun > 0 ? '+' : '') + fcstVsRun.toFixed(1) + '%).'
+      });
+    }
+
+    // 4. Momentum shift
+    const momOrdPct = pctChg(last3Ord, prior3Ord);
+    if (prior3Ord > 0) {
+      const momDir = momOrdPct > 5 ? 'accelerating' : momOrdPct < -5 ? 'decelerating' : 'stable';
+      bullets.push({
+        type: momDir === 'accelerating' ? 'positive' : momDir === 'decelerating' ? 'negative' : 'neutral',
+        text: 'Order momentum is ' + momDir + ': last 3 months ' + (momOrdPct > 0 ? '+' : '') + momOrdPct.toFixed(1) + '% vs prior 3 months (' + fmt(last3Ord) + ' vs ' + fmt(prior3Ord) + ').'
+      });
+    }
+
+    // 5. POS vs Orders divergence (destocking/stocking signal)
+    if (posYTD_CY > 0 && ordersYTD_CY > 0) {
+      const divergence = ordPct - posPctVal;
+      if (Math.abs(divergence) > 10) {
+        const sig = divergence > 0 ? 'stocking' : 'destocking';
+        bullets.push({
+          type: 'warning',
+          text: 'POS and Orders are diverging (' + (divergence > 0 ? '+' : '') + divergence.toFixed(1) + 'pp gap), suggesting possible ' + sig + ' activity across the portfolio.'
+        });
+      }
+    }
+
+    return bullets;
+  }
+
   return {
     cy, py, throughMonth,
     kpis: {
@@ -3428,6 +3652,10 @@ function computeAnalyticsData() {
     byCustomer: buildBreakdown(custCY, custPY, custPosCY, custPosPY),
     byBrand: buildBreakdown(brandCY, brandPY, brandPosCY, brandPosPY),
     byType: buildBreakdown(typeCY, typePY, typePosCY, typePosPY),
+    riskOppFlags: computeRiskOppFlags(),
+    topMovers: computeTopMovers(),
+    accountScorecards: computeAccountScorecards(),
+    executiveSummary: computeExecutiveSummary(),
   };
 }
 
@@ -3435,13 +3663,143 @@ function renderAnalytics() {
   renderAnalyticsExcludeMonths();
   renderAnalyticsFilterBar();
   const data = computeAnalyticsData();
+  renderExecutiveSummary(data);
   renderAnalyticsKPIs(data);
   renderBreakdown('analytics-by-customer', data.byCustomer, 'customer');
   renderBreakdown('analytics-by-brand', data.byBrand, 'brand');
   renderBreakdown('analytics-by-type', data.byType, 'type');
   renderMomentumSection(data);
   renderFcstVsTrend(data);
+  renderRiskOppFlags(data);
+  renderTopMovers(data);
+  renderAccountScorecards(data);
   renderAttribution();
+}
+
+function renderExecutiveSummary(data) {
+  const card = document.getElementById('executive-summary-card');
+  const container = document.getElementById('executive-summary-bullets');
+  if (!card || !container) return;
+  const bullets = data.executiveSummary;
+  if (!bullets || !bullets.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var colorMap = { positive: '#16a34a', negative: '#dc2626', warning: '#d97706', neutral: '#6b7280' };
+  var bgMap = { positive: '#f0fdf4', negative: '#fef2f2', warning: '#fffbeb', neutral: '#f9fafb' };
+  var iconMap = { positive: '\u25B2', negative: '\u25BC', warning: '\u26A0', neutral: '\u25CF' };
+  container.innerHTML = bullets.map(function(b) {
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px 12px;background:' + bgMap[b.type] + ';border-radius:6px;border-left:3px solid ' + colorMap[b.type] + ';">' +
+      '<span style="color:' + colorMap[b.type] + ';font-size:12px;margin-top:1px;flex-shrink:0;">' + iconMap[b.type] + '</span>' +
+      '<span style="font-size:13px;color:#374151;line-height:1.5;">' + sanitize(b.text) + '</span>' +
+    '</div>';
+  }).join('');
+}
+
+function renderRiskOppFlags(data) {
+  var card = document.getElementById('risk-opp-card');
+  var container = document.getElementById('risk-opp-container');
+  if (!card || !container) return;
+  var flags = data.riskOppFlags;
+  if (!flags || !flags.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var signalStyles = {
+    opportunity: { bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a', label: 'Opportunity' },
+    risk: { bg: '#fef2f2', border: '#fecaca', color: '#dc2626', label: 'Risk' },
+    destocking: { bg: '#fff7ed', border: '#fed7aa', color: '#ea580c', label: 'Destocking' },
+    stocking: { bg: '#eff6ff', border: '#bfdbfe', color: '#2563eb', label: 'Stocking' }
+  };
+  // Table header
+  var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
+    '<thead><tr style="border-bottom:2px solid #e5e7eb;">' +
+    '<th style="text-align:left;padding:6px 8px;font-size:11px;color:#6b7280;text-transform:uppercase;">Item</th>' +
+    '<th style="text-align:center;padding:6px 8px;font-size:11px;color:#6b7280;text-transform:uppercase;">Signal</th>' +
+    '<th style="text-align:right;padding:6px 8px;font-size:11px;color:#6b7280;text-transform:uppercase;">POS Trend</th>' +
+    '<th style="text-align:right;padding:6px 8px;font-size:11px;color:#6b7280;text-transform:uppercase;">Order Trend</th>' +
+    '<th style="text-align:right;padding:6px 8px;font-size:11px;color:#6b7280;text-transform:uppercase;">Fcst Avg/mo</th>' +
+    '</tr></thead><tbody>';
+  for (var i = 0; i < flags.length; i++) {
+    var f = flags[i];
+    var s = signalStyles[f.signal] || signalStyles.risk;
+    var posCls = f.posPct > 0.5 ? 'color:#16a34a' : f.posPct < -0.5 ? 'color:#dc2626' : 'color:#6b7280';
+    var ordCls = f.ordPct > 0.5 ? 'color:#16a34a' : f.ordPct < -0.5 ? 'color:#dc2626' : 'color:#6b7280';
+    var posArrow = f.posPct > 0.5 ? '\u25B2' : f.posPct < -0.5 ? '\u25BC' : '';
+    var ordArrow = f.ordPct > 0.5 ? '\u25B2' : f.ordPct < -0.5 ? '\u25BC' : '';
+    html += '<tr style="border-bottom:1px solid #f3f4f6;">' +
+      '<td style="padding:8px;font-weight:600;color:#374151;">' + sanitize(f.name) + '</td>' +
+      '<td style="padding:8px;text-align:center;"><span style="display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:' + s.bg + ';color:' + s.color + ';border:1px solid ' + s.border + ';">' + s.label + '</span></td>' +
+      '<td style="padding:8px;text-align:right;font-weight:600;' + posCls + ';">' + posArrow + ' ' + Math.abs(f.posPct).toFixed(1) + '%</td>' +
+      '<td style="padding:8px;text-align:right;font-weight:600;' + ordCls + ';">' + ordArrow + ' ' + Math.abs(f.ordPct).toFixed(1) + '%</td>' +
+      '<td style="padding:8px;text-align:right;color:#374151;">' + (f.fcstAvg > 0 ? fmt(f.fcstAvg) : '<span style="color:#9ca3af;">--</span>') + '</td>' +
+    '</tr>';
+  }
+  html += '</tbody></table>';
+  container.innerHTML = html;
+}
+
+function renderTopMovers(data) {
+  var card = document.getElementById('top-movers-card');
+  var gainersEl = document.getElementById('top-movers-gainers');
+  var declinersEl = document.getElementById('top-movers-decliners');
+  var periodLabel = document.getElementById('top-movers-period-label');
+  if (!card || !gainersEl || !declinersEl) return;
+  var movers = data.topMovers;
+  if ((!movers.gainers || !movers.gainers.length) && (!movers.decliners || !movers.decliners.length)) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var labels = data.momentumLabels;
+  if (periodLabel) {
+    periodLabel.textContent = labels.last3 && labels.prior3 ? labels.cy + ': ' + labels.last3 + ' vs ' + labels.prior3 : '';
+  }
+  function renderMoverList(items, isGainer) {
+    if (!items || !items.length) return '<div class="text-xs text-gray-400">None</div>';
+    return items.map(function(it) {
+      var ordColor = isGainer ? '#16a34a' : '#dc2626';
+      var posColor = it.posDelta > 0 ? '#16a34a' : it.posDelta < 0 ? '#dc2626' : '#6b7280';
+      return '<div style="padding:8px 0;border-bottom:1px solid #f3f4f6;">' +
+        '<div style="font-size:12px;font-weight:600;color:#374151;margin-bottom:4px;">' + sanitize(it.name) + '</div>' +
+        '<div style="display:flex;gap:12px;font-size:11px;">' +
+          '<div style="flex:1;">' +
+            '<span style="color:#6b7280;">Orders </span>' +
+            '<span style="color:' + ordColor + ';font-weight:600;">' + (it.ordDelta > 0 ? '+' : '') + fmt(it.ordDelta) + '</span>' +
+            '<span style="color:#9ca3af;"> (' + (it.ordPct > 0 ? '+' : '') + it.ordPct.toFixed(1) + '%)</span>' +
+          '</div>' +
+          '<div style="flex:1;">' +
+            '<span style="color:#6b7280;">POS </span>' +
+            '<span style="color:' + posColor + ';font-weight:600;">' + (it.posDelta > 0 ? '+' : '') + fmt(it.posDelta) + '</span>' +
+            '<span style="color:#9ca3af;"> (' + (it.posPct > 0 ? '+' : '') + it.posPct.toFixed(1) + '%)</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }).join('');
+  }
+  gainersEl.innerHTML = renderMoverList(movers.gainers, true);
+  declinersEl.innerHTML = renderMoverList(movers.decliners, false);
+}
+
+function renderAccountScorecards(data) {
+  var card = document.getElementById('account-scorecards-card');
+  var container = document.getElementById('account-scorecards-container');
+  if (!card || !container) return;
+  var scorecards = data.accountScorecards;
+  if (!scorecards || !scorecards.length) { card.style.display = 'none'; return; }
+  card.style.display = '';
+  var healthColors = { green: { bg: '#f0fdf4', border: '#bbf7d0', dot: '#16a34a', label: 'Healthy' }, yellow: { bg: '#fffbeb', border: '#fde68a', dot: '#d97706', label: 'Mixed' }, red: { bg: '#fef2f2', border: '#fecaca', dot: '#dc2626', label: 'At Risk' } };
+  container.innerHTML = scorecards.map(function(sc) {
+    var h = healthColors[sc.health] || healthColors.yellow;
+    var ordCls = sc.ordPct > 0.5 ? 'color:#16a34a' : sc.ordPct < -0.5 ? 'color:#dc2626' : 'color:#6b7280';
+    var posCls = sc.posPct > 0.5 ? 'color:#16a34a' : sc.posPct < -0.5 ? 'color:#dc2626' : 'color:#6b7280';
+    var ordArrow = sc.ordPct > 0.5 ? '\u25B2' : sc.ordPct < -0.5 ? '\u25BC' : '';
+    var posArrow = sc.posPct > 0.5 ? '\u25B2' : sc.posPct < -0.5 ? '\u25BC' : '';
+    return '<div style="border:1px solid ' + h.border + ';border-radius:8px;background:' + h.bg + ';padding:14px 16px;">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">' +
+        '<span style="font-size:13px;font-weight:700;color:#111827;">' + sanitize(sc.name) + '</span>' +
+        '<span style="display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:' + h.dot + ';"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + h.dot + ';"></span>' + h.label + '</span>' +
+      '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:11px;">' +
+        '<div><span style="color:#6b7280;">YTD Orders</span><div style="font-weight:600;color:#374151;">' + fmt(sc.ordCY) + ' <span style="font-weight:600;' + ordCls + ';font-size:10px;">' + ordArrow + ' ' + Math.abs(sc.ordPct).toFixed(1) + '%</span></div></div>' +
+        '<div><span style="color:#6b7280;">YTD POS</span><div style="font-weight:600;color:#374151;">' + fmt(sc.posCY) + ' <span style="font-weight:600;' + posCls + ';font-size:10px;">' + posArrow + ' ' + Math.abs(sc.posPct).toFixed(1) + '%</span></div></div>' +
+      '</div>' +
+      '<div style="margin-top:8px;font-size:11px;color:#6b7280;">Forecast (remaining): <strong style="color:#374151;">' + (sc.fcstFuture > 0 ? fmt(sc.fcstFuture) : '--') + '</strong></div>' +
+    '</div>';
+  }).join('');
 }
 
 function renderMomentumSection(data) {
