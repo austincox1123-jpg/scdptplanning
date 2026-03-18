@@ -1953,7 +1953,11 @@ function findBestMethodForData(actualData, baseParams) {
         const rawScore = scoreBacktest(result.monthErrors);
         const adjustedScore = rawScore + (complexityPenalty[method] || 0);
         allScored.push({ method, window: win, alpha, wmape: result.wmape, score: adjustedScore, monthErrors: result.monthErrors });
-        if (adjustedScore < best.score) {
+        // Primary: lowest WMAPE wins. Tiebreaker: composite score.
+        // A method must have better or equal WMAPE to be selected.
+        const isBetterWmape = result.wmape < best.wmape - 0.001;
+        const isSameWmape = Math.abs(result.wmape - best.wmape) <= 0.001;
+        if (isBetterWmape || (isSameWmape && adjustedScore < best.score)) {
           best = { method, window: win, alpha, wmape: result.wmape, score: adjustedScore, monthErrors: result.monthErrors, demandClass };
         }
       }
