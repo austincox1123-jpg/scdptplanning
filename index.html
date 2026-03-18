@@ -2759,13 +2759,9 @@ function renderChart(rows) {
   // Render promo tag row below chart
   renderChartPromoTags(chartRows);
 
-  if (chart) {
-    chart.data.labels = labels;
-    chart.data.datasets.forEach((ds, i) => { if (!datasets[i]) return; ds.data = datasets[i].data; if (datasets[i].pointRadius) ds.pointRadius = datasets[i].pointRadius; if (datasets[i].pointBackgroundColor) ds.pointBackgroundColor = datasets[i].pointBackgroundColor; if (datasets[i].pointStyle) ds.pointStyle = datasets[i].pointStyle; });
-    // Add new dataset if chart has fewer datasets
-    while (chart.data.datasets.length < datasets.length) chart.data.datasets.push(datasets[chart.data.datasets.length]);
-    chart.update('none');
-  } else {
+  // Always destroy and recreate chart to ensure options (gridlines, datasets) are fresh
+  if (chart) { chart.destroy(); chart = null; }
+  {
     chart = new Chart(ctx, {
       type: 'line', data: { labels, datasets },
       options: {
