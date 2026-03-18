@@ -572,6 +572,29 @@
         </div>
       </div>
 
+      <!-- Forecast vs Trend: does the existing plan align with actuals? -->
+      <div class="card p-6 mt-6">
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-sm font-semibold text-gray-700">Existing Forecast vs Recent Trend</h2>
+          <div class="text-xs text-gray-400">Avg monthly forecast vs last 3 months actual run rate</div>
+        </div>
+        <p class="text-xs text-gray-500 mb-4">Compares the existing forecast (avg per month) to recent actual order run rate. Highlights where the plan may be too high or too low relative to current trends.</p>
+        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+          <div>
+            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Brand</h3>
+            <div id="fcst-trend-brand"></div>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Type</h3>
+            <div id="fcst-trend-type"></div>
+          </div>
+          <div>
+            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Formation</h3>
+            <div id="fcst-trend-formation"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- Item Attribution: Brand > Type > Formation -->
       <div class="card p-6 mt-6">
         <div class="flex justify-between items-center mb-4">
@@ -3301,6 +3324,71 @@ function computeAnalyticsData() {
   // PY trend
   const pyTrend = pyMonthly.orders.map(v => v > 0 ? v : null);
 
+  // Forecast vs Trend: compare existing forecast (future months) to recent actual run rate
+  // by brand, type, formation. Shows if the current plan aligns with what's actually happening.
+  function computeForecastVsTrend(dimField) {
+    // Recent run rate: avg monthly orders & POS over last 3 included months
+    const recentRate = new Map(); // dim => { ordAvg, posAvg }
+    const fcstTotal = new Map(); // dim => { ordFcst, fcstMonths }
+
+    for (const r of rows) {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (!moMatch) continue;
+      const yr = parseInt(moMatch[1]);
+      const mi = parseInt(moMatch[2]) - 1;
+      const dim = r[dimField] || 'Unknown';
+
+      // Recent actuals (last 3 included months of CY)
+      if (yr === cy && last3Months.includes(mi) && !state.excludedMonths.has(r.month)) {
+        if (!recentRate.has(dim)) recentRate.set(dim, { ordTotal: 0, posTotal: 0 });
+        const d = recentRate.get(dim);
+        d.ordTotal += r.orderCases || 0;
+        d.posTotal += r.posCases || 0;
+      }
+
+      // Existing forecast (future months)
+      if (r.forecast != null && r.forecast > 0) {
+        if (!fcstTotal.has(dim)) fcstTotal.set(dim, { total: 0, months: new Set() });
+        const d = fcstTotal.get(dim);
+        d.total += r.forecast;
+        d.months.add(r.month);
+      }
+    }
+
+    const nLast3 = last3Months.length || 1;
+    const items = [];
+    const allDims = new Set([...recentRate.keys(), ...fcstTotal.keys()]);
+    for (const dim of allDims) {
+      const recent = recentRate.get(dim) || { ordTotal: 0, posTotal: 0 };
+      const fcst = fcstTotal.get(dim);
+      const recentOrdAvg = recent.ordTotal / nLast3;
+      const recentPosAvg = recent.posTotal / nLast3;
+      const fcstAvg = fcst ? fcst.total / fcst.months.size : 0;
+      const fcstMonths = fcst ? fcst.months.size : 0;
+
+      // Compare forecast avg to recent order avg
+      const vsOrdPct = recentOrdAvg > 0 ? pctChg(fcstAvg, recentOrdAvg) : 0;
+      // Compare forecast avg to recent POS avg (scaled by typical order/POS ratio)
+      const vsPosRate = recentPosAvg > 0 ? recentOrdAvg / recentPosAvg : 1;
+      const posImpliedFcst = recentPosAvg * vsPosRate;
+      const vsPosPct = posImpliedFcst > 0 ? pctChg(fcstAvg, posImpliedFcst) : 0;
+
+      if (fcstAvg > 0 || recentOrdAvg > 0) {
+        items.push({
+          name: dim,
+          recentOrdAvg: Math.round(recentOrdAvg),
+          recentPosAvg: Math.round(recentPosAvg),
+          fcstAvg: Math.round(fcstAvg),
+          fcstMonths,
+          vsOrdPct,
+          signal: Math.abs(vsOrdPct) < 10 ? 'aligned' : vsOrdPct > 0 ? 'above' : 'below',
+        });
+      }
+    }
+    items.sort((a, b) => Math.abs(b.vsOrdPct) - Math.abs(a.vsOrdPct));
+    return items;
+  }
+
   // Breakdowns: merge CY and PY, compute % change
   function buildBreakdown(cyMap, pyMap, posMapCY, posMapPY) {
     const allKeys = new Set([...cyMap.keys(), ...pyMap.keys()]);
@@ -3332,6 +3420,9 @@ function computeAnalyticsData() {
     momentumByBrand: computeMomentumByDim('brand'),
     momentumByType: computeMomentumByDim('type'),
     momentumByFormation: computeMomentumByDim('formation'),
+    fcstVsTrendByBrand: computeForecastVsTrend('brand'),
+    fcstVsTrendByType: computeForecastVsTrend('type'),
+    fcstVsTrendByFormation: computeForecastVsTrend('formation'),
     momentumLabels: { last3: last3Label, prior3: prior3Label, cy },
     trend: { cy: cyTrend, py: pyTrend, fcst: fcstTrend },
     byCustomer: buildBreakdown(custCY, custPY, custPosCY, custPosPY),
@@ -3349,6 +3440,7 @@ function renderAnalytics() {
   renderBreakdown('analytics-by-brand', data.byBrand, 'brand');
   renderBreakdown('analytics-by-type', data.byType, 'type');
   renderMomentumSection(data);
+  renderFcstVsTrend(data);
   renderAttribution();
 }
 
@@ -3391,6 +3483,38 @@ function renderMomentumDim(containerId, items, labels) {
           '<span style="color:#9ca3af;"> vs ' + fmt(item.posPrior3) + '</span> ' +
           '<span class="' + posCls + '" style="font-weight:600;">' + posArrow + Math.abs(item.posPct).toFixed(1) + '%</span>' +
         '</div>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function renderFcstVsTrend(data) {
+  renderFcstVsTrendDim('fcst-trend-brand', data.fcstVsTrendByBrand);
+  renderFcstVsTrendDim('fcst-trend-type', data.fcstVsTrendByType);
+  renderFcstVsTrendDim('fcst-trend-formation', data.fcstVsTrendByFormation);
+}
+
+function renderFcstVsTrendDim(containerId, items) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  if (!items || !items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No forecast data</div>'; return; }
+
+  container.innerHTML = items.slice(0, 10).map(item => {
+    const signalColor = item.signal === 'aligned' ? '#16a34a' : item.signal === 'above' ? '#dc2626' : '#2563eb';
+    const signalBg = item.signal === 'aligned' ? '#f0fdf4' : item.signal === 'above' ? '#fef2f2' : '#eff6ff';
+    const signalLabel = item.signal === 'aligned' ? 'Aligned' : item.signal === 'above' ? 'Plan High' : 'Plan Low';
+    const arrow = item.vsOrdPct > 0.5 ? '\u25B2' : item.vsOrdPct < -0.5 ? '\u25BC' : '';
+
+    return '<div style="padding:6px 0; border-bottom:1px solid #f3f4f6;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">' +
+        '<span style="font-size:12px; font-weight:600; color:#374151;">' + sanitize(item.name) + '</span>' +
+        '<span style="font-size:10px; font-weight:600; padding:1px 6px; border-radius:3px; background:' + signalBg + '; color:' + signalColor + ';">' + signalLabel + '</span>' +
+      '</div>' +
+      '<div style="display:flex; gap:8px; font-size:11px; color:#6b7280;">' +
+        '<span>Fcst avg: <strong style="color:#374151;">' + fmt(item.fcstAvg) + '</strong>/mo</span>' +
+        '<span>Recent orders: <strong style="color:#374151;">' + fmt(item.recentOrdAvg) + '</strong>/mo</span>' +
+        '<span>Recent POS: <strong style="color:#374151;">' + fmt(item.recentPosAvg) + '</strong>/mo</span>' +
+        '<span style="color:' + signalColor + '; font-weight:600;">' + arrow + Math.abs(item.vsOrdPct).toFixed(1) + '%</span>' +
       '</div>' +
     '</div>';
   }).join('');
