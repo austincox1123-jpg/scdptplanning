@@ -2784,7 +2784,7 @@ function renderChart(rows) {
             return '(click to exclude month)';
           } } },
         },
-        scales: { x: { ticks: { font: { size: 10 }, maxTicksLimit: 20 } }, y: { ticks: { font: { size: 10 } } } },
+        scales: { x: { ticks: { font: { size: 10 }, maxTicksLimit: 20 }, grid: { display: true, color: '#e5e7eb', lineWidth: 0.5 } }, y: { ticks: { font: { size: 10 } }, grid: { color: '#f3f4f6' } } },
         onClick: function(evt, elements, ch) {
           // Get the x-axis index from the click position
           const xScale = ch.scales.x;
