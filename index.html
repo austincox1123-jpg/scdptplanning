@@ -1981,9 +1981,8 @@ function backtestParams(actualData, params) {
     const fcResults = runForecastEngine(trainingData, params, LAG);
     if (fcResults.length < LAG) continue;
     const fcValue = fcResults[LAG - 1].statValue;
-    // Use the same source signal as the forecast for backtest accuracy
-    const sourceField = params.source === 'pos' ? 'posCases' : params.source === 'invoice' ? 'invoiceCases' : 'orderCases';
-    const actual = actualData[i][sourceField] || 0;
+    // Always measure accuracy against order cases — that's what we ship
+    const actual = actualData[i].orderCases || 0;
     // Don't skip zeros — penalize forecasting volume when actual is 0
     if (actual === 0 && fcValue === 0) continue;
     if (actual === 0 && fcValue > 0) {
@@ -2013,8 +2012,8 @@ function detectOutliers(monthErrors) {
 }
 
 function findBestMethodForData(actualData, baseParams) {
-  const sourceField = baseParams.source === 'pos' ? 'posCases' : baseParams.source === 'invoice' ? 'invoiceCases' : 'orderCases';
-  const values = actualData.map(r => r[sourceField] || 0);
+  // Always classify demand pattern and detect seasonality based on orders (what we ship)
+  const values = actualData.map(r => r.orderCases || 0);
   const demandClass = classifyDemand(values);
   const hasPOS = actualData.some(r => (r.posCases || 0) > 0);
   const seasonInfo = detectSeasonality(values);
@@ -2477,9 +2476,8 @@ function runBacktest() {
       if (fcResults.length < LAG) continue;
       const fcValue = fcResults[LAG - 1].statValue;
 
-      // Accuracy measured against the configured source signal
-      const sourceField = params.source === 'pos' ? 'posCases' : params.source === 'invoice' ? 'invoiceCases' : 'orderCases';
-      const actual = skuActuals[i][sourceField] || 0;
+      // Always measure accuracy against order cases — that's what we ship
+      const actual = skuActuals[i].orderCases || 0;
       if (actual <= 0) continue;
 
       const error = fcValue - actual;
