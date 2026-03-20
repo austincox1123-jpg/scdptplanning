@@ -365,7 +365,7 @@
               <div class="backtest-grid-container mt-4">
                 <table class="data-grid">
                   <thead><tr>
-                    <th>Month</th><th class="num">Actual</th><th class="num">Lag2 Forecast</th><th class="num">Net Error</th><th class="num">Abs Error</th><th class="num">Abs % Error</th>
+                    <th>Month</th><th class="num">Actual Orders</th><th class="num">Lag2 Forecast</th><th class="num">Net Error</th><th class="num">Abs Error</th><th class="num">Abs % Error</th>
                   </tr></thead>
                   <tbody id="backtest-body"></tbody>
                 </table>
@@ -1983,16 +1983,8 @@ function backtestParams(actualData, params) {
     const fcValue = fcResults[LAG - 1].statValue;
     // Always measure accuracy against order cases — that's what we ship
     const actual = actualData[i].orderCases || 0;
-    // Don't skip zeros — penalize forecasting volume when actual is 0
-    if (actual === 0 && fcValue === 0) continue;
-    if (actual === 0 && fcValue > 0) {
-      totalAbsError += fcValue;
-      totalActual += fcValue;
-      monthErrors.push({ month: actualData[i].month, actual: 0, forecast: fcValue, pctErr: 1.0 });
-      continue;
-    }
     const absErr = Math.abs(fcValue - actual);
-    const pctErr = absErr / actual;
+    const pctErr = actual > 0 ? absErr / actual : (fcValue > 0 ? 1.0 : 0);
     totalActual += actual;
     totalAbsError += absErr;
     monthErrors.push({ month: actualData[i].month, actual, forecast: fcValue, pctErr });
@@ -2478,7 +2470,6 @@ function runBacktest() {
 
       // Always measure accuracy against order cases — that's what we ship
       const actual = skuActuals[i].orderCases || 0;
-      if (actual <= 0) continue;
 
       const error = fcValue - actual;
       allErrors.push({ month: targetMonth, actual, forecast: fcValue, error });
@@ -2503,20 +2494,23 @@ function runBacktest() {
   const totalError = allErrors.reduce((s,r) => s + r.error, 0);
 
   // WMAPE = sum(|error|) / sum(actual) — volume-weighted across all SKUs
-  const wmape = totalActual > 0 ? totalAbsError / totalActual : 0;
+  // When actual is 0 but forecast > 0, use forecast as denominator for those months
+  const totalDenom = totalActual > 0 ? totalActual : totalAbsError;
+  const wmape = totalDenom > 0 ? totalAbsError / totalDenom : 0;
 
   // Bias = sum(error) / sum(actual) — positive = over-forecasting
   const bias = totalActual > 0 ? totalError / totalActual : 0;
 
-  // Simple MAPE across all individual SKU/month errors
-  const mape = allErrors.reduce((s,r) => s + Math.abs(r.error) / r.actual, 0) / allErrors.length;
+  // Simple MAPE across all individual SKU/month errors (skip zeros for MAPE to avoid Infinity)
+  const nonZeroErrors = allErrors.filter(r => r.actual > 0);
+  const mape = nonZeroErrors.length > 0 ? nonZeroErrors.reduce((s,r) => s + Math.abs(r.error) / r.actual, 0) / nonZeroErrors.length : 0;
 
   const accuracy = 1 - wmape;
 
   // Build detail rows from month rollup — use tracked absError (sum of |individual SKU errors|)
   // so the detail table is consistent with the summary WMAPE
   const results = [...monthRollup.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([month, mr]) => {
-    const absPctError = mr.actual > 0 ? mr.absError / mr.actual : 0;
+    const absPctError = mr.actual > 0 ? mr.absError / mr.actual : (mr.forecast > 0 ? 1.0 : 0);
     return { month, actual: mr.actual, forecast: mr.forecast, error: mr.signedError, absError: mr.absError, absPctError };
   });
 
