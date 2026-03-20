@@ -2428,6 +2428,15 @@ function runBacktest() {
   const params = getConfigParams();
   const LAG = 2;
 
+  // Build total actual orders by month from ALL filtered rows (matches the chart exactly)
+  const chartActualsByMonth = new Map();
+  for (const r of filtered) {
+    if (state.excludedMonths.has(r.month)) continue;
+    if ((r.orderCases || 0) > 0) {
+      chartActualsByMonth.set(r.month, (chartActualsByMonth.get(r.month) || 0) + (r.orderCases || 0));
+    }
+  }
+
   // Group filtered rows by customer|product
   const skuGroups = new Map();
   for (const r of filtered) {
@@ -2507,11 +2516,15 @@ function runBacktest() {
 
   const accuracy = 1 - wmape;
 
-  // Build detail rows from month rollup — use tracked absError (sum of |individual SKU errors|)
-  // so the detail table is consistent with the summary WMAPE
+  // Build detail rows — actual orders from ALL filtered data (matches chart exactly),
+  // forecast from backtested SKUs only
   const results = [...monthRollup.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([month, mr]) => {
-    const absPctError = mr.actual > 0 ? mr.absError / mr.actual : (mr.forecast > 0 ? 1.0 : 0);
-    return { month, actual: mr.actual, forecast: mr.forecast, error: mr.signedError, absError: mr.absError, absPctError };
+    // Use chart actuals so the number matches what the user sees on the chart
+    const chartActual = chartActualsByMonth.get(month) || mr.actual;
+    const error = mr.forecast - chartActual;
+    const absError = Math.abs(error);
+    const absPctError = chartActual > 0 ? absError / chartActual : (mr.forecast > 0 ? 1.0 : 0);
+    return { month, actual: chartActual, forecast: mr.forecast, error, absError, absPctError };
   });
 
   return { results, wmape, bias, mape, accuracy, monthsBacktested: results.length, skusTested };
