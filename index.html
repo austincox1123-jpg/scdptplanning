@@ -2497,35 +2497,26 @@ function runBacktest() {
 
   if (allErrors.length === 0) return null;
 
-  // Summary metrics across all SKU errors
-  const totalActual = allErrors.reduce((s,r) => s + r.actual, 0);
-  const totalAbsError = allErrors.reduce((s,r) => s + Math.abs(r.error), 0);
-  const totalError = allErrors.reduce((s,r) => s + r.error, 0);
-
-  // WMAPE = sum(|error|) / sum(actual) — volume-weighted across all SKUs
-  // When actual is 0 but forecast > 0, use forecast as denominator for those months
-  const totalDenom = totalActual > 0 ? totalActual : totalAbsError;
-  const wmape = totalDenom > 0 ? totalAbsError / totalDenom : 0;
-
-  // Bias = sum(error) / sum(actual) — positive = over-forecasting
-  const bias = totalActual > 0 ? totalError / totalActual : 0;
-
-  // Simple MAPE across all individual SKU/month errors (skip zeros for MAPE to avoid Infinity)
-  const nonZeroErrors = allErrors.filter(r => r.actual > 0);
-  const mape = nonZeroErrors.length > 0 ? nonZeroErrors.reduce((s,r) => s + Math.abs(r.error) / r.actual, 0) / nonZeroErrors.length : 0;
-
-  const accuracy = 1 - wmape;
-
   // Build detail rows — actual orders from ALL filtered data (matches chart exactly),
   // forecast from backtested SKUs only
   const results = [...monthRollup.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([month, mr]) => {
-    // Use chart actuals so the number matches what the user sees on the chart
     const chartActual = chartActualsByMonth.get(month) || mr.actual;
     const error = mr.forecast - chartActual;
     const absError = Math.abs(error);
     const absPctError = chartActual > 0 ? absError / chartActual : (mr.forecast > 0 ? 1.0 : 0);
     return { month, actual: chartActual, forecast: mr.forecast, error, absError, absPctError };
   });
+
+  // Summary metrics computed FROM the detail rows so they're 100% consistent
+  const totalActual = results.reduce((s,r) => s + r.actual, 0);
+  const totalAbsError = results.reduce((s,r) => s + r.absError, 0);
+  const totalError = results.reduce((s,r) => s + r.error, 0);
+  const totalDenom = totalActual > 0 ? totalActual : totalAbsError;
+  const wmape = totalDenom > 0 ? totalAbsError / totalDenom : 0;
+  const bias = totalActual > 0 ? totalError / totalActual : 0;
+  const nonZeroResults = results.filter(r => r.actual > 0);
+  const mape = nonZeroResults.length > 0 ? nonZeroResults.reduce((s,r) => s + r.absPctError, 0) / nonZeroResults.length : 0;
+  const accuracy = 1 - wmape;
 
   return { results, wmape, bias, mape, accuracy, monthsBacktested: results.length, skusTested };
 }
@@ -2638,7 +2629,27 @@ function getDashboardRows() {
 
   const filtered = getFilteredRows();
   const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
-  const statResults = state.forecastResults[fcKey] || [];
+  let statResults = state.forecastResults[fcKey] || [];
+
+  // If no direct forecast match, aggregate from per-SKU saved forecasts
+  // This handles "Forecast All SKUs" results when filters show "All Products" etc.
+  if (statResults.length === 0 && Object.keys(state.skuForecasts).length > 0) {
+    const monthAgg = new Map();
+    const custFilter = state.filters.customer || '';
+    const prodFilter = state.filters.product || '';
+    for (const [skuKey, results] of Object.entries(state.skuForecasts)) {
+      const [cust, prod] = skuKey.split('|');
+      if (custFilter && cust !== custFilter) continue;
+      if (prodFilter && prod !== prodFilter) continue;
+      for (const r of results) {
+        monthAgg.set(r.month, (monthAgg.get(r.month) || 0) + r.statValue);
+      }
+    }
+    if (monthAgg.size > 0) {
+      statResults = [...monthAgg.entries()].map(([month, val]) => ({ month, statValue: val })).sort((a,b) => a.month.localeCompare(b.month));
+    }
+  }
+
   const overridePrefix = fcKey + '|';
 
   // Build weekly-level rows if data is weekly
