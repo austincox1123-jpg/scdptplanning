@@ -300,6 +300,7 @@
         </div>
         <div class="flex gap-3">
           <button onclick="showUpload()" class="px-4 py-2 btn-outline">New Upload</button>
+          <button onclick="bulkForecast()" class="px-4 py-2 btn-secondary" style="font-size:13px;">Forecast All SKUs</button>
           <button onclick="exportExcel()" class="px-4 py-2 btn-outline">Export View</button>
           <button onclick="exportAllForecasts()" class="px-4 py-2 btn-outline">Export All</button>
         </div>
@@ -327,7 +328,11 @@
         </div>
         <div class="filter-group-lg">
           <label class="label">Product</label>
-          <select id="filter-product" onchange="onFilterChange()" class="select-field"><option value="">All Products</option></select>
+          <div style="display:flex; gap:4px; align-items:center;">
+            <button onclick="prevProduct()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer; font-size:13px; line-height:1;" title="Previous product">&#9664;</button>
+            <select id="filter-product" onchange="onFilterChange()" class="select-field" style="flex:1;"><option value="">All Products</option></select>
+            <button onclick="nextProduct()" style="padding:6px 10px; border:1px solid #d1d5db; border-radius:4px; background:#fff; cursor:pointer; font-size:13px; line-height:1;" title="Next product">&#9654;</button>
+          </div>
         </div>
         <button onclick="resetFilters()" style="background:none; padding:8px 12px; font-size:14px; color:#6b7280;">Reset</button>
       </div>
@@ -474,7 +479,6 @@
             </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
             <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
-            <button onclick="bulkForecast()" class="w-full py-2 btn-secondary" style="margin-top:4px">Forecast All SKUs</button>
             <div style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px;">
               <button onclick="findBestMethod()" class="w-full py-2 btn-secondary">Find Best Method</button>
               <div id="best-method-result" class="hidden"></div>
@@ -1834,6 +1838,26 @@ function resetFilters() {
   updateCascadingFilters();
   invalidateCache();
   renderDashboard();
+}
+
+function nextProduct() { navigateProduct(1); }
+function prevProduct() { navigateProduct(-1); }
+function navigateProduct(direction) {
+  const sel = document.getElementById('filter-product');
+  const options = [...sel.options].filter(o => o.value !== '');
+  if (options.length === 0) return;
+  const currentIdx = options.findIndex(o => o.value === sel.value);
+  let newIdx;
+  if (currentIdx === -1) {
+    // No product selected — go to first or last
+    newIdx = direction > 0 ? 0 : options.length - 1;
+  } else {
+    newIdx = currentIdx + direction;
+    if (newIdx < 0) newIdx = options.length - 1;
+    if (newIdx >= options.length) newIdx = 0;
+  }
+  sel.value = options[newIdx].value;
+  onFilterChange();
 }
 
 // ============================================================
