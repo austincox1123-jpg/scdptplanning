@@ -2827,11 +2827,15 @@ function getDashboardRows() {
         weekActualMap.set(tk, { pos: prev.pos+(r.posCases||0), invoice: prev.invoice+(r.invoiceCases||0), order: prev.order+(r.orderCases||0) });
       }
       if (r.forecast != null) {
-        if (r.weekNumber) {
-          // Weekly forecast row — use directly
+        // Future forecast rows: always treat as monthly and distribute to weeks,
+        // even if WEEK_NUMBER_OF_MONTH has a value (from upload formulas).
+        // Only use weekNumber for forecast if the row also has actuals (historical).
+        const hasActualData = (r.posCases != null && r.posCases > 0) || (r.invoiceCases != null && r.invoiceCases > 0) || (r.orderCases != null && r.orderCases > 0);
+        if (r.weekNumber && hasActualData) {
+          // Historical weekly forecast row — use directly
           weekFcstMap.set(tk, (weekFcstMap.get(tk)||0) + r.forecast);
         } else {
-          // Monthly forecast row — collect for distribution
+          // Monthly/future forecast row — collect for weekly distribution
           monthlyExistingFcst.set(r.month, (monthlyExistingFcst.get(r.month)||0) + r.forecast);
         }
       }
