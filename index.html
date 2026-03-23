@@ -295,6 +295,7 @@
           <div class="page-toggle">
             <button class="active" onclick="showForecastView()">Forecast</button>
             <button onclick="showAnalyticsView()">Analytics</button>
+            <button onclick="showDefinitionsView()">Definitions</button>
           </div>
           <span class="text-sm text-gray-500 ml-2" id="file-info"></span>
         </div>
@@ -479,6 +480,7 @@
             </div>
             <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
             <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
+            <button onclick="zeroOutForecasts()" class="w-full py-2 btn-secondary text-sm mt-2" style="color:#dc2626; border-color:#fca5a5;">Zero Out Forecasts</button>
             <div style="border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px;">
               <button onclick="findBestMethod()" class="w-full py-2 btn-secondary">Find Best Method</button>
               <div id="best-method-result" class="hidden"></div>
@@ -515,6 +517,7 @@
           <div class="page-toggle">
             <button onclick="showForecastView()">Forecast</button>
             <button class="active" onclick="showAnalyticsView()">Analytics</button>
+            <button onclick="showDefinitionsView()">Definitions</button>
           </div>
         </div>
         <div class="flex gap-3">
@@ -562,47 +565,25 @@
         </div>
       </div>
 
-      <!-- Momentum: Last 3 vs Prior 3 months by Brand/Type/Formation -->
-      <div class="card p-6 mt-6">
+      <!-- Performance vs PY — Combined Orders, POS, and Forecast -->
+      <div class="card p-6 mt-6" id="vs-py-section">
         <div class="flex justify-between items-center mb-4">
-          <h2 class="text-sm font-semibold text-gray-700">Momentum — Last 3 vs Prior 3 Included Months</h2>
-          <div class="text-xs text-gray-400" id="momentum-period-label"></div>
+          <h2 class="text-sm font-semibold text-gray-700">Performance vs Prior Year</h2>
+          <div class="text-xs text-gray-400" id="vs-py-period-label"></div>
         </div>
+        <p class="text-xs text-gray-500 mb-4">YTD orders and POS vs same period last year. Existing forecast total vs PY full-year actuals.</p>
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
           <div>
             <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Brand</h3>
-            <div id="momentum-by-brand"></div>
+            <div id="vs-py-brand"></div>
           </div>
           <div>
             <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Type</h3>
-            <div id="momentum-by-type"></div>
+            <div id="vs-py-type"></div>
           </div>
           <div>
             <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Formation</h3>
-            <div id="momentum-by-formation"></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Forecast vs Trend: does the existing plan align with actuals? -->
-      <div class="card p-6 mt-6">
-        <div class="flex justify-between items-center mb-4">
-          <h2 class="text-sm font-semibold text-gray-700">Existing Forecast vs Recent Trend</h2>
-          <div class="text-xs text-gray-400">Avg monthly forecast vs last 3 months actual run rate</div>
-        </div>
-        <p class="text-xs text-gray-500 mb-4">Compares the existing forecast (avg per month) to recent actual order run rate. Highlights where the plan may be too high or too low relative to current trends.</p>
-        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
-          <div>
-            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Brand</h3>
-            <div id="fcst-trend-brand"></div>
-          </div>
-          <div>
-            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Type</h3>
-            <div id="fcst-trend-type"></div>
-          </div>
-          <div>
-            <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Formation</h3>
-            <div id="fcst-trend-formation"></div>
+            <div id="vs-py-formation"></div>
           </div>
         </div>
       </div>
@@ -650,6 +631,131 @@
         </div>
         <p class="text-xs text-gray-500 mb-4">Click a segment to drill down. Shows YTD order volume share and vs PY change.</p>
         <div id="attribution-container"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== DEFINITIONS VIEW ===== -->
+  <div id="definitions-view" class="min-h-screen hidden">
+    <nav class="nav">
+      <div class="nav-inner justify-between" style="max-width:1280px; margin:0 auto; padding:0 16px;">
+        <div class="flex items-center">
+          <span class="text-lg font-semibold">Sales Forecast</span>
+          <div class="page-toggle">
+            <button onclick="showForecastView()">Forecast</button>
+            <button onclick="showAnalyticsView()">Analytics</button>
+            <button class="active" onclick="showDefinitionsView()">Definitions</button>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="showUpload()" class="px-4 py-2 btn-outline">New Upload</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container py-6" style="max-width:960px;">
+      <h1 class="text-2xl font-bold mb-6" style="color:#111827;">Definitions &amp; Reference</h1>
+
+      <!-- Forecast Methods -->
+      <div class="card p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4" style="color:#111827;">Forecast Methods</h2>
+        <div style="display:grid; gap:12px;">
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Weighted Moving Average</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Averages recent periods with more weight on recent data. Good for stable demand. The <strong>Window</strong> parameter controls how many months to look back.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Exponential Smoothing</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Weights all history with exponentially decaying weights. <strong>Alpha</strong> controls reactivity (0.1 = smooth, 0.9 = reactive). Includes damped drift to capture trend direction.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Linear Average</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Simple average of the lookback window, projected flat. Best for very stable, no-trend demand.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Linear Trend (Slope)</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Fits a straight line via regression, extrapolates the slope forward. Good when demand has a clear upward or downward trend.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Holt's Linear Trend</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Double exponential smoothing capturing both level and trend with damping. Prevents runaway trend extrapolation. <strong>Alpha</strong> controls level, <strong>Beta</strong> controls trend.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Croston's SBA</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Designed for intermittent demand (many zero months). Separately smooths demand size and interval between orders. SBA correction removes upward bias.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Holt-Winters Seasonal</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Captures level + trend + seasonal pattern. Requires 24+ months of history. Multiplicative seasonality adjusts for proportional seasonal effects.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">POS-to-Shipment Lag</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Uses POS data with a lag offset to predict shipments. Captures the delay between consumer purchase and replenishment orders.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">POS Consumption Rate</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Computes the ratio of POS to shipments, uses it to project future shipments from recent POS trends.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Data Sources -->
+      <div class="card p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4" style="color:#111827;">Data Sources</h2>
+        <div style="display:grid; gap:12px;">
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">POS Cases</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Point-of-sale data representing consumer purchases at the retail level.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Order Cases</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Customer orders placed (shipment demand). This is the primary forecast target.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Invoice Cases</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Invoiced/shipped cases. Reflects what was actually fulfilled, which may differ from orders due to supply constraints.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Blended</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">When selected as a data source, the engine blends POS and order data using a configurable weight to create a combined signal.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Key Concepts -->
+      <div class="card p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4" style="color:#111827;">Key Concepts</h2>
+        <div style="display:grid; gap:12px;">
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">POS-to-Order Ratio</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">When forecasting from POS data, the engine scales the POS-based forecast to order level using the historical POS-to-order ratio. The ratio uses a decay curve that gives more weight to recent months. Standard items use a faster decay; WT items use a slower decay to account for longer replenishment cycles.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Seasonal Indices</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Computed from historical data as the ratio of each month's average to the overall average. When seasonality is detected, the forecast is multiplied by seasonal indices. Dampening is applied to prevent extreme seasonal swings when history is limited.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">4-4-5 Calendar</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">A fiscal calendar where each quarter has months of 4, 4, and 5 weeks respectively. The engine normalizes actuals to a per-week basis and denormalizes forecasts back using the weeks-per-month schedule. This prevents months with 5 weeks from appearing to have higher demand.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Promo/Outlier Tags</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Months can be tagged as <strong>Promo</strong> or <strong>Outlier</strong>. Outlier months are removed from training data so they do not distort the baseline forecast. Promo-tagged months have their lift computed from POS data and can be used to add expected promotional volume on top of the statistical forecast.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Demand Classification</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">The engine classifies each item's demand pattern:
+              <br><strong>Smooth</strong> — Low variability, few zeros. All methods available.
+              <br><strong>Erratic</strong> — High variability but consistent ordering. Smoothing methods preferred.
+              <br><strong>Intermittent</strong> — Many zero months but consistent size when ordered. Croston's SBA preferred.
+              <br><strong>Lumpy</strong> — High variability and many zeros. Most challenging; Croston's or simple average used.
+              <br>The classification restricts which methods are eligible during best-method search.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Forecast Accuracy</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;"><strong>WMAPE</strong> (Weighted Mean Absolute Percentage Error) measures forecast accuracy as total absolute error divided by total actual volume. The backtest uses a 2-month lag — the engine pretends it only has data up to 2 months before each test point, forecasts forward, and compares to actuals. <strong>Bias</strong> indicates systematic over-forecasting (positive) or under-forecasting (negative).</div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -1390,11 +1496,13 @@ function showUpload() {
   document.getElementById('upload-view').classList.remove('hidden');
   document.getElementById('dashboard-view').classList.add('hidden');
   document.getElementById('analytics-view').classList.add('hidden');
+  document.getElementById('definitions-view').classList.add('hidden');
 }
 
 function showForecastView() {
   document.getElementById('upload-view').classList.add('hidden');
   document.getElementById('analytics-view').classList.add('hidden');
+  document.getElementById('definitions-view').classList.add('hidden');
   document.getElementById('dashboard-view').classList.remove('hidden');
   // Update toggle buttons
   document.querySelectorAll('.page-toggle button').forEach(b => b.classList.remove('active'));
@@ -1405,10 +1513,20 @@ function showAnalyticsView() {
   document.getElementById('upload-view').classList.add('hidden');
   document.getElementById('dashboard-view').classList.add('hidden');
   document.getElementById('analytics-view').classList.remove('hidden');
+  document.getElementById('definitions-view').classList.add('hidden');
   // Update toggle buttons
   document.querySelectorAll('.page-toggle button').forEach(b => b.classList.remove('active'));
   document.querySelectorAll('.page-toggle button').forEach(b => { if (b.textContent === 'Analytics') b.classList.add('active'); });
   renderAnalytics();
+}
+
+function showDefinitionsView() {
+  document.getElementById('upload-view').classList.add('hidden');
+  document.getElementById('dashboard-view').classList.add('hidden');
+  document.getElementById('analytics-view').classList.add('hidden');
+  document.getElementById('definitions-view').classList.remove('hidden');
+  document.querySelectorAll('.page-toggle button').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.page-toggle button').forEach(b => { if (b.textContent === 'Definitions') b.classList.add('active'); });
 }
 
 function setViewMode(mode) {
@@ -1437,6 +1555,7 @@ function fmtTimeKey(key) {
 }
 function showDashboard() {
   document.getElementById('upload-view').classList.add('hidden');
+  document.getElementById('definitions-view').classList.add('hidden');
   document.getElementById('dashboard-view').classList.remove('hidden');
   document.getElementById('file-info').textContent = state.fileName || '';
   populateFilters();
@@ -1960,6 +2079,31 @@ function saveForecast() {
 
   renderSavedPanel();
   showToast('Forecast saved for ' + (state.filters.customer || 'all filters'), 'success');
+}
+
+function zeroOutForecasts() {
+  const key = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  // Build zero results for all future months
+  const filtered = getFilteredRows();
+  const futureMonths = [...new Set(filtered.filter(r => r.forecast != null).map(r => r.month))].sort();
+  if (futureMonths.length === 0) {
+    showToast('No forecast months found for current filter', 'error');
+    return;
+  }
+  const zeroResults = futureMonths.map(m => ({ month: m, statValue: 0 }));
+  state.forecastResults[key] = zeroResults;
+  // Also persist to skuForecasts via disaggregation
+  const params = getConfigParams();
+  const itemType = (filtered.find(function(r) { return r.type; }) || {}).type || '';
+  params.itemType = itemType;
+  disaggregateForecast(filtered, zeroResults, params);
+  // Clear any preview
+  delete state.previewResults[key];
+  document.getElementById('save-forecast-btn').classList.add('hidden');
+  renderSavedPanel();
+  invalidateCache();
+  renderDashboard();
+  showToast('All future forecasts zeroed out for current filter', 'success');
 }
 
 // ============================================================
@@ -3330,8 +3474,25 @@ function computeAnalyticsData() {
   const invoiceYTD_CY = ytd(cyMonthly.invoice, throughMonth);
   const invoiceYTD_PY = ytd(pyMonthly.invoice, throughMonth);
 
-  // Momentum: last 3 included months vs months 4-6 (prior 3)
-  // Get sorted list of included CY months that have actual data
+  // Momentum: last 3 included months vs prior 3 included months
+  // Use ALL months with actual data that are not excluded (across CY and PY)
+  const allIncludedMonthKeys = [];
+  const monthlyAgg = new Map(); // "YYYY-MM" => { orders, pos }
+  for (const r of rows) {
+    const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+    if (!moMatch) continue;
+    if (state.excludedMonths.has(r.month)) continue;
+    if ((r.orderCases || 0) <= 0 && (r.posCases || 0) <= 0) continue;
+    const ym = moMatch[1] + '-' + moMatch[2];
+    if (!monthlyAgg.has(ym)) monthlyAgg.set(ym, { orders: 0, pos: 0 });
+    const d = monthlyAgg.get(ym);
+    d.orders += r.orderCases || 0;
+    d.pos += r.posCases || 0;
+  }
+  const allIncludedSorted = [...monthlyAgg.keys()].sort();
+  const last3MonthKeys = allIncludedSorted.slice(-3);
+  const prior3MonthKeys = allIncludedSorted.slice(-6, -3);
+  // Also keep old-style index arrays for CY-only calcs (backward compat)
   const includedMonths = [];
   for (let i = 0; i <= throughMonth; i++) {
     const mk = cy + '-' + String(i + 1).padStart(2, '0') + '-15';
@@ -3343,35 +3504,33 @@ function computeAnalyticsData() {
   const prior3Months = includedMonths.slice(-6, -3);
 
   const sumMonths = (arr, indices) => indices.reduce((s, i) => s + (arr[i] || 0), 0);
-  const last3Ord = sumMonths(cyMonthly.orders, last3Months);
-  const prior3Ord = sumMonths(cyMonthly.orders, prior3Months);
-  const last3Pos = sumMonths(cyMonthly.pos, last3Months);
-  const prior3Pos = sumMonths(cyMonthly.pos, prior3Months);
+  const last3Ord = last3MonthKeys.reduce((s, ym) => s + (monthlyAgg.get(ym) || {orders:0}).orders, 0);
+  const prior3Ord = prior3MonthKeys.reduce((s, ym) => s + (monthlyAgg.get(ym) || {orders:0}).orders, 0);
+  const last3Pos = last3MonthKeys.reduce((s, ym) => s + (monthlyAgg.get(ym) || {pos:0}).pos, 0);
+  const prior3Pos = prior3MonthKeys.reduce((s, ym) => s + (monthlyAgg.get(ym) || {pos:0}).pos, 0);
 
   // Pct change helper
   const pctChg = (cur, prev) => prev > 0 ? ((cur - prev) / prev * 100) : (cur > 0 ? 100 : 0);
 
   // Momentum by dimension: brand, type, formation
-  // For each dimension value, compute last 3 vs prior 3 months (orders + POS)
+  // Uses all included month keys across CY and PY
   function computeMomentumByDim(dimField) {
     const dimData = new Map(); // dimValue => { last3Ord, prior3Ord, last3Pos, prior3Pos }
     for (const r of rows) {
       const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
       if (!moMatch) continue;
-      const yr = parseInt(moMatch[1]);
-      if (yr !== cy) continue;
-      const mi = parseInt(moMatch[2]) - 1;
       if (state.excludedMonths.has(r.month)) continue;
       if ((r.orderCases || 0) <= 0 && (r.posCases || 0) <= 0) continue;
+      const ym = moMatch[1] + '-' + moMatch[2];
 
       const dim = r[dimField] || 'Unknown';
       if (!dimData.has(dim)) dimData.set(dim, { last3Ord: 0, prior3Ord: 0, last3Pos: 0, prior3Pos: 0 });
       const d = dimData.get(dim);
 
-      if (last3Months.includes(mi)) {
+      if (last3MonthKeys.includes(ym)) {
         d.last3Ord += r.orderCases || 0;
         d.last3Pos += r.posCases || 0;
-      } else if (prior3Months.includes(mi)) {
+      } else if (prior3MonthKeys.includes(ym)) {
         d.prior3Ord += r.orderCases || 0;
         d.prior3Pos += r.posCases || 0;
       }
@@ -3421,8 +3580,9 @@ function computeAnalyticsData() {
       const mi = parseInt(moMatch[2]) - 1;
       const dim = r[dimField] || 'Unknown';
 
-      // Recent actuals (last 3 included months of CY)
-      if (yr === cy && last3Months.includes(mi) && !state.excludedMonths.has(r.month)) {
+      // Recent actuals (last 3 included months)
+      var ym = moMatch[1] + '-' + moMatch[2];
+      if (last3MonthKeys.includes(ym) && !state.excludedMonths.has(r.month)) {
         if (!recentRate.has(dim)) recentRate.set(dim, { ordTotal: 0, posTotal: 0 });
         const d = recentRate.get(dim);
         d.ordTotal += r.orderCases || 0;
@@ -3438,7 +3598,7 @@ function computeAnalyticsData() {
       }
     }
 
-    const nLast3 = last3Months.length || 1;
+    const nLast3 = last3MonthKeys.length || 1;
     const items = [];
     const allDims = new Set([...recentRate.keys(), ...fcstTotal.keys()]);
     for (const dim of allDims) {
@@ -3489,8 +3649,10 @@ function computeAnalyticsData() {
 
   // Month labels for the momentum period descriptions
   const MONTH_ABBR = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  const last3Label = last3Months.length ? MONTH_ABBR[last3Months[0]] + '-' + MONTH_ABBR[last3Months[last3Months.length-1]] : '';
-  const prior3Label = prior3Months.length ? MONTH_ABBR[prior3Months[0]] + '-' + MONTH_ABBR[prior3Months[prior3Months.length-1]] : '';
+  // Build labels from the month keys (YYYY-MM format)
+  function ymToLabel(ym) { var parts = ym.split('-'); return MONTH_ABBR[parseInt(parts[1]) - 1] + ' ' + parts[0].slice(2); }
+  const last3Label = last3MonthKeys.length ? ymToLabel(last3MonthKeys[0]) + '-' + ymToLabel(last3MonthKeys[last3MonthKeys.length-1]) : '';
+  const prior3Label = prior3MonthKeys.length ? ymToLabel(prior3MonthKeys[0]) + '-' + ymToLabel(prior3MonthKeys[prior3MonthKeys.length-1]) : '';
 
   // ---- Risk & Opportunity Flags ----
   // For each brand+type combo, assess POS trend, order trend, and forecast direction
@@ -3500,15 +3662,15 @@ function computeAnalyticsData() {
       const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
       if (!moMatch) continue;
       const yr = parseInt(moMatch[1]);
-      if (yr !== cy) continue;
       const mi = parseInt(moMatch[2]) - 1;
       if (state.excludedMonths.has(r.month)) continue;
+      const ym = moMatch[1] + '-' + moMatch[2];
       const key = (r.brand || 'Unknown') + '|' + (r.type || 'Unknown');
       if (!itemMap.has(key)) itemMap.set(key, { last3Ord: 0, prior3Ord: 0, last3Pos: 0, prior3Pos: 0, fcstTotal: 0, fcstMonths: 0 });
       const d = itemMap.get(key);
-      if (last3Months.includes(mi)) { d.last3Ord += r.orderCases || 0; d.last3Pos += r.posCases || 0; }
-      else if (prior3Months.includes(mi)) { d.prior3Ord += r.orderCases || 0; d.prior3Pos += r.posCases || 0; }
-      if (r.forecast != null && r.forecast > 0 && mi > throughMonth) { d.fcstTotal += r.forecast; d.fcstMonths++; }
+      if (last3MonthKeys.includes(ym)) { d.last3Ord += r.orderCases || 0; d.last3Pos += r.posCases || 0; }
+      else if (prior3MonthKeys.includes(ym)) { d.prior3Ord += r.orderCases || 0; d.prior3Pos += r.posCases || 0; }
+      if (r.forecast != null && r.forecast > 0 && yr === cy && mi > throughMonth) { d.fcstTotal += r.forecast; d.fcstMonths++; }
     }
     const flags = [];
     for (const [key, d] of itemMap) {
@@ -3516,7 +3678,7 @@ function computeAnalyticsData() {
       const ordPct = pctChg(d.last3Ord, d.prior3Ord);
       const posPct = pctChg(d.last3Pos, d.prior3Pos);
       const fcstAvg = d.fcstMonths > 0 ? d.fcstTotal / d.fcstMonths : 0;
-      const recentOrdAvg = last3Months.length > 0 ? d.last3Ord / last3Months.length : 0;
+      const recentOrdAvg = last3MonthKeys.length > 0 ? d.last3Ord / last3MonthKeys.length : 0;
       const fcstVsOrd = recentOrdAvg > 0 ? pctChg(fcstAvg, recentOrdAvg) : 0;
       let signal = null, magnitude = 0;
       // Opportunity: POS growing (>10%) but forecast flat or declining relative to orders
@@ -3636,7 +3798,7 @@ function computeAnalyticsData() {
 
     // 3. Forecast alignment
     const fcstFutureTotal = fcstMonthly.slice(throughMonth + 1).reduce((s, v) => s + v, 0);
-    const recentRunRate = last3Months.length > 0 ? last3Ord / last3Months.length : 0;
+    const recentRunRate = last3MonthKeys.length > 0 ? last3Ord / last3MonthKeys.length : 0;
     const remainingMonths = 11 - throughMonth;
     if (fcstFutureTotal > 0 && recentRunRate > 0 && remainingMonths > 0) {
       const fcstAvgMo = fcstFutureTotal / remainingMonths;
@@ -3673,6 +3835,62 @@ function computeAnalyticsData() {
     return bullets;
   }
 
+  // ---- Performance vs PY by dimension ----
+  function computeVsPY(dimField) {
+    // YTD CY vs YTD PY for orders and POS, plus existing forecast total vs PY full year
+    const dimCYOrd = new Map(), dimPYOrd = new Map();
+    const dimCYPos = new Map(), dimPYPos = new Map();
+    const dimPYFull = new Map(), dimPYFullPos = new Map(); // PY full year
+    const dimFcst = new Map(); // existing forecast total for CY
+    for (const r of rows) {
+      const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
+      if (!moMatch) continue;
+      const yr = parseInt(moMatch[1]);
+      const mi = parseInt(moMatch[2]) - 1;
+      if (state.excludedMonths.has(r.month)) continue;
+      const dim = r[dimField] || 'Unknown';
+      if (yr === cy && mi <= throughMonth) {
+        if ((r.orderCases || 0) > 0 || (r.posCases || 0) > 0) {
+          dimCYOrd.set(dim, (dimCYOrd.get(dim) || 0) + (r.orderCases || 0));
+          dimCYPos.set(dim, (dimCYPos.get(dim) || 0) + (r.posCases || 0));
+        }
+      }
+      if (yr === py && mi <= throughMonth) {
+        if ((r.orderCases || 0) > 0 || (r.posCases || 0) > 0) {
+          dimPYOrd.set(dim, (dimPYOrd.get(dim) || 0) + (r.orderCases || 0));
+          dimPYPos.set(dim, (dimPYPos.get(dim) || 0) + (r.posCases || 0));
+        }
+      }
+      if (yr === py) {
+        if ((r.orderCases || 0) > 0) {
+          dimPYFull.set(dim, (dimPYFull.get(dim) || 0) + (r.orderCases || 0));
+        }
+      }
+      // Existing forecast for CY
+      if (yr === cy && r.forecast != null && r.forecast > 0) {
+        dimFcst.set(dim, (dimFcst.get(dim) || 0) + r.forecast);
+      }
+    }
+    const allDims = new Set([...dimCYOrd.keys(), ...dimPYOrd.keys(), ...dimFcst.keys()]);
+    const items = [];
+    for (const dim of allDims) {
+      const ordCY = dimCYOrd.get(dim) || 0;
+      const ordPY = dimPYOrd.get(dim) || 0;
+      const posCY = dimCYPos.get(dim) || 0;
+      const posPY = dimPYPos.get(dim) || 0;
+      const fcst = dimFcst.get(dim) || 0;
+      const pyFull = dimPYFull.get(dim) || 0;
+      items.push({
+        name: dim,
+        ordCY, ordPY, ordPct: pctChg(ordCY, ordPY),
+        posCY, posPY, posPct: pctChg(posCY, posPY),
+        fcst, pyFull, fcstPct: pctChg(fcst, pyFull),
+      });
+    }
+    items.sort((a, b) => b.ordCY - a.ordCY);
+    return items;
+  }
+
   return {
     cy, py, throughMonth,
     kpis: {
@@ -3687,6 +3905,9 @@ function computeAnalyticsData() {
     fcstVsTrendByBrand: computeForecastVsTrend('brand'),
     fcstVsTrendByType: computeForecastVsTrend('type'),
     fcstVsTrendByFormation: computeForecastVsTrend('formation'),
+    vsPYByBrand: computeVsPY('brand'),
+    vsPYByType: computeVsPY('type'),
+    vsPYByFormation: computeVsPY('formation'),
     momentumLabels: { last3: last3Label, prior3: prior3Label, cy },
     trend: { cy: cyTrend, py: pyTrend, fcst: fcstTrend },
     byCustomer: buildBreakdown(custCY, custPY, custPosCY, custPosPY),
@@ -3708,8 +3929,7 @@ function renderAnalytics() {
   renderBreakdown('analytics-by-customer', data.byCustomer, 'customer');
   renderBreakdown('analytics-by-brand', data.byBrand, 'brand');
   renderBreakdown('analytics-by-type', data.byType, 'type');
-  renderMomentumSection(data);
-  renderFcstVsTrend(data);
+  renderVsPYSection(data);
   renderRiskOppFlags(data);
   renderTopMovers(data);
   renderAccountScorecards(data);
@@ -3842,77 +4062,51 @@ function renderAccountScorecards(data) {
   }).join('');
 }
 
-function renderMomentumSection(data) {
-  const labels = data.momentumLabels;
-  const periodEl = document.getElementById('momentum-period-label');
+function renderVsPYSection(data) {
+  var periodEl = document.getElementById('vs-py-period-label');
   if (periodEl) {
-    periodEl.textContent = labels.last3 && labels.prior3
-      ? labels.cy + ': ' + labels.last3 + ' vs ' + labels.prior3
-      : '';
+    periodEl.textContent = data.cy + ' YTD (thru ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][data.throughMonth] + ') vs ' + data.py;
   }
-  renderMomentumDim('momentum-by-brand', data.momentumByBrand, labels);
-  renderMomentumDim('momentum-by-type', data.momentumByType, labels);
-  renderMomentumDim('momentum-by-formation', data.momentumByFormation, labels);
+  renderVsPYDim('vs-py-brand', data.vsPYByBrand);
+  renderVsPYDim('vs-py-type', data.vsPYByType);
+  renderVsPYDim('vs-py-formation', data.vsPYByFormation);
 }
 
-function renderMomentumDim(containerId, items, labels) {
-  const container = document.getElementById(containerId);
+function renderVsPYDim(containerId, items) {
+  var container = document.getElementById(containerId);
   if (!container) return;
   if (!items || !items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No data</div>'; return; }
 
-  container.innerHTML = items.slice(0, 10).map(item => {
-    const ordCls = item.ordPct > 0.5 ? 'kpi-up' : item.ordPct < -0.5 ? 'kpi-down' : 'kpi-flat';
-    const ordArrow = item.ordPct > 0.5 ? '\u25B2' : item.ordPct < -0.5 ? '\u25BC' : '';
-    const posCls = item.posPct > 0.5 ? 'kpi-up' : item.posPct < -0.5 ? 'kpi-down' : 'kpi-flat';
-    const posArrow = item.posPct > 0.5 ? '\u25B2' : item.posPct < -0.5 ? '\u25BC' : '';
+  container.innerHTML = items.slice(0, 10).map(function(item) {
+    var ordCls = item.ordPct > 0.5 ? 'kpi-up' : item.ordPct < -0.5 ? 'kpi-down' : 'kpi-flat';
+    var ordArrow = item.ordPct > 0.5 ? '\u25B2' : item.ordPct < -0.5 ? '\u25BC' : '';
+    var posCls = item.posPct > 0.5 ? 'kpi-up' : item.posPct < -0.5 ? 'kpi-down' : 'kpi-flat';
+    var posArrow = item.posPct > 0.5 ? '\u25B2' : item.posPct < -0.5 ? '\u25BC' : '';
+    var fcstCls = item.fcstPct > 0.5 ? 'kpi-up' : item.fcstPct < -0.5 ? 'kpi-down' : 'kpi-flat';
+    var fcstArrow = item.fcstPct > 0.5 ? '\u25B2' : item.fcstPct < -0.5 ? '\u25BC' : '';
 
-    return '<div style="padding:6px 0; border-bottom:1px solid #f3f4f6;">' +
-      '<div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:3px;">' + sanitize(item.name) + '</div>' +
-      '<div style="display:flex; gap:12px; font-size:11px;">' +
-        '<div style="flex:1;">' +
-          '<span style="color:#6b7280;">Orders</span> ' +
-          '<span style="font-weight:600;">' + fmt(item.ordLast3) + '</span>' +
-          '<span style="color:#9ca3af;"> vs ' + fmt(item.ordPrior3) + '</span> ' +
-          '<span class="' + ordCls + '" style="font-weight:600;">' + ordArrow + Math.abs(item.ordPct).toFixed(1) + '%</span>' +
+    return '<div style="padding:8px 0; border-bottom:1px solid #f3f4f6;">' +
+      '<div style="font-size:12px; font-weight:600; color:#374151; margin-bottom:4px;">' + sanitize(item.name) + '</div>' +
+      '<div style="display:flex; flex-direction:column; gap:3px; font-size:11px;">' +
+        '<div style="display:flex; justify-content:space-between;">' +
+          '<span style="color:#6b7280;">Orders vs PY</span>' +
+          '<span><span style="font-weight:600;">' + fmt(item.ordCY) + '</span>' +
+          '<span style="color:#9ca3af;"> vs ' + fmt(item.ordPY) + '</span> ' +
+          '<span class="' + ordCls + '" style="font-weight:600;">' + ordArrow + ' ' + Math.abs(item.ordPct).toFixed(1) + '%</span></span>' +
         '</div>' +
-        '<div style="flex:1;">' +
-          '<span style="color:#6b7280;">POS</span> ' +
-          '<span style="font-weight:600;">' + fmt(item.posLast3) + '</span>' +
-          '<span style="color:#9ca3af;"> vs ' + fmt(item.posPrior3) + '</span> ' +
-          '<span class="' + posCls + '" style="font-weight:600;">' + posArrow + Math.abs(item.posPct).toFixed(1) + '%</span>' +
+        '<div style="display:flex; justify-content:space-between;">' +
+          '<span style="color:#6b7280;">POS vs PY</span>' +
+          '<span><span style="font-weight:600;">' + fmt(item.posCY) + '</span>' +
+          '<span style="color:#9ca3af;"> vs ' + fmt(item.posPY) + '</span> ' +
+          '<span class="' + posCls + '" style="font-weight:600;">' + posArrow + ' ' + Math.abs(item.posPct).toFixed(1) + '%</span></span>' +
         '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
-
-function renderFcstVsTrend(data) {
-  renderFcstVsTrendDim('fcst-trend-brand', data.fcstVsTrendByBrand);
-  renderFcstVsTrendDim('fcst-trend-type', data.fcstVsTrendByType);
-  renderFcstVsTrendDim('fcst-trend-formation', data.fcstVsTrendByFormation);
-}
-
-function renderFcstVsTrendDim(containerId, items) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  if (!items || !items.length) { container.innerHTML = '<div class="text-xs text-gray-400">No forecast data</div>'; return; }
-
-  container.innerHTML = items.slice(0, 10).map(item => {
-    const signalColor = item.signal === 'aligned' ? '#16a34a' : item.signal === 'above' ? '#dc2626' : '#2563eb';
-    const signalBg = item.signal === 'aligned' ? '#f0fdf4' : item.signal === 'above' ? '#fef2f2' : '#eff6ff';
-    const signalLabel = item.signal === 'aligned' ? 'Aligned' : item.signal === 'above' ? 'Plan High' : 'Plan Low';
-    const arrow = item.vsOrdPct > 0.5 ? '\u25B2' : item.vsOrdPct < -0.5 ? '\u25BC' : '';
-
-    return '<div style="padding:6px 0; border-bottom:1px solid #f3f4f6;">' +
-      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:2px;">' +
-        '<span style="font-size:12px; font-weight:600; color:#374151;">' + sanitize(item.name) + '</span>' +
-        '<span style="font-size:10px; font-weight:600; padding:1px 6px; border-radius:3px; background:' + signalBg + '; color:' + signalColor + ';">' + signalLabel + '</span>' +
-      '</div>' +
-      '<div style="display:flex; gap:8px; font-size:11px; color:#6b7280;">' +
-        '<span>Fcst avg: <strong style="color:#374151;">' + fmt(item.fcstAvg) + '</strong>/mo</span>' +
-        '<span>Recent orders: <strong style="color:#374151;">' + fmt(item.recentOrdAvg) + '</strong>/mo</span>' +
-        '<span>Recent POS: <strong style="color:#374151;">' + fmt(item.recentPosAvg) + '</strong>/mo</span>' +
-        '<span style="color:' + signalColor + '; font-weight:600;">' + arrow + Math.abs(item.vsOrdPct).toFixed(1) + '%</span>' +
+        '<div style="display:flex; justify-content:space-between;">' +
+          '<span style="color:#6b7280;">Forecast vs PY Full Year</span>' +
+          '<span><span style="font-weight:600;">' + (item.fcst > 0 ? fmt(item.fcst) : '--') + '</span>' +
+          '<span style="color:#9ca3af;"> vs ' + fmt(item.pyFull) + '</span> ' +
+          (item.fcst > 0 && item.pyFull > 0 ? '<span class="' + fcstCls + '" style="font-weight:600;">' + fcstArrow + ' ' + Math.abs(item.fcstPct).toFixed(1) + '%</span>' : '<span style="color:#9ca3af;">--</span>') +
+          '</span>' +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join('');
