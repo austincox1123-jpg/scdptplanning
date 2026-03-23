@@ -571,7 +571,7 @@
           <h2 class="text-sm font-semibold text-gray-700">Performance vs Prior Year</h2>
           <div class="text-xs text-gray-400" id="vs-py-period-label"></div>
         </div>
-        <p class="text-xs text-gray-500 mb-4">YTD orders and POS vs same period last year. Existing forecast total vs PY full-year actuals.</p>
+        <p class="text-xs text-gray-500 mb-4">YTD orders and POS vs same period last year. Existing forecast vs PY Balance of Year (same future months last year).</p>
         <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 16px;">
           <div>
             <h3 class="text-xs font-semibold text-gray-500 mb-2 uppercase tracking-wide">By Brand</h3>
@@ -3837,10 +3837,11 @@ function computeAnalyticsData() {
 
   // ---- Performance vs PY by dimension ----
   function computeVsPY(dimField) {
-    // YTD CY vs YTD PY for orders and POS, plus existing forecast total vs PY full year
+    // YTD CY vs YTD PY for orders and POS, plus existing forecast vs PY Balance of Year (BOY)
+    // BOY = PY months AFTER throughMonth (same period the forecast covers)
     const dimCYOrd = new Map(), dimPYOrd = new Map();
     const dimCYPos = new Map(), dimPYPos = new Map();
-    const dimPYFull = new Map(), dimPYFullPos = new Map(); // PY full year
+    const dimPYBOY = new Map(); // PY balance of year (months after throughMonth)
     const dimFcst = new Map(); // existing forecast total for CY
     for (const r of rows) {
       const moMatch = r.month.match(/^(\d{4})-(\d{2})/);
@@ -3861,13 +3862,14 @@ function computeAnalyticsData() {
           dimPYPos.set(dim, (dimPYPos.get(dim) || 0) + (r.posCases || 0));
         }
       }
-      if (yr === py) {
+      // PY Balance of Year: months AFTER throughMonth in prior year
+      if (yr === py && mi > throughMonth) {
         if ((r.orderCases || 0) > 0) {
-          dimPYFull.set(dim, (dimPYFull.get(dim) || 0) + (r.orderCases || 0));
+          dimPYBOY.set(dim, (dimPYBOY.get(dim) || 0) + (r.orderCases || 0));
         }
       }
-      // Existing forecast for CY
-      if (yr === cy && r.forecast != null && r.forecast > 0) {
+      // Existing forecast for CY (future months only)
+      if (r.forecast != null && r.forecast > 0) {
         dimFcst.set(dim, (dimFcst.get(dim) || 0) + r.forecast);
       }
     }
@@ -3879,12 +3881,12 @@ function computeAnalyticsData() {
       const posCY = dimCYPos.get(dim) || 0;
       const posPY = dimPYPos.get(dim) || 0;
       const fcst = dimFcst.get(dim) || 0;
-      const pyFull = dimPYFull.get(dim) || 0;
+      const pyBOY = dimPYBOY.get(dim) || 0;
       items.push({
         name: dim,
         ordCY, ordPY, ordPct: pctChg(ordCY, ordPY),
         posCY, posPY, posPct: pctChg(posCY, posPY),
-        fcst, pyFull, fcstPct: pctChg(fcst, pyFull),
+        fcst, pyBOY, fcstPct: pctChg(fcst, pyBOY),
       });
     }
     items.sort((a, b) => b.ordCY - a.ordCY);
@@ -4101,10 +4103,10 @@ function renderVsPYDim(containerId, items) {
           '<span class="' + posCls + '" style="font-weight:600;">' + posArrow + ' ' + Math.abs(item.posPct).toFixed(1) + '%</span></span>' +
         '</div>' +
         '<div style="display:flex; justify-content:space-between;">' +
-          '<span style="color:#6b7280;">Forecast vs PY Full Year</span>' +
+          '<span style="color:#6b7280;">Forecast vs PY BOY</span>' +
           '<span><span style="font-weight:600;">' + (item.fcst > 0 ? fmt(item.fcst) : '--') + '</span>' +
-          '<span style="color:#9ca3af;"> vs ' + fmt(item.pyFull) + '</span> ' +
-          (item.fcst > 0 && item.pyFull > 0 ? '<span class="' + fcstCls + '" style="font-weight:600;">' + fcstArrow + ' ' + Math.abs(item.fcstPct).toFixed(1) + '%</span>' : '<span style="color:#9ca3af;">--</span>') +
+          '<span style="color:#9ca3af;"> vs ' + fmt(item.pyBOY) + '</span> ' +
+          (item.fcst > 0 && item.pyBOY > 0 ? '<span class="' + fcstCls + '" style="font-weight:600;">' + fcstArrow + ' ' + Math.abs(item.fcstPct).toFixed(1) + '%</span>' : '<span style="color:#9ca3af;">--</span>') +
           '</span>' +
         '</div>' +
       '</div>' +
