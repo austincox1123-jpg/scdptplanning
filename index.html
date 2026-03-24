@@ -374,22 +374,24 @@
             </div>
           </div>
 
-          <!-- Top Items -->
+          <!-- Top Items (collapsible) -->
           <div class="card mt-4 p-6" id="top-items-section">
-            <div class="flex justify-between items-center mb-4">
-              <h2 class="text-sm font-semibold text-gray-700">Top Items — Last 3 Months</h2>
-              <button id="back-to-all-btn" class="hidden" onclick="resetFilters()" style="background:none; font-size:12px; color:#2563eb; text-decoration:underline; border:none; cursor:pointer;">← Back to All</button>
+            <div class="flex justify-between items-center" style="cursor:pointer;" onclick="toggleTopItems()">
+              <h2 class="text-sm font-semibold text-gray-700"><span id="top-items-arrow">&#9660;</span> Top Items — Last 3 Months</h2>
+              <button id="back-to-all-btn" class="hidden" onclick="event.stopPropagation(); resetFilters()" style="background:none; font-size:12px; color:#2563eb; text-decoration:underline; border:none; cursor:pointer;">← Back to All</button>
             </div>
-            <div class="grid-container" style="max-height:350px">
-              <table class="data-grid">
-                <thead><tr>
-                  <th style="min-width:100px">Customer</th>
-                  <th style="min-width:100px">Product</th>
-                  <th class="num top-sort" data-col="orders" style="cursor:pointer">Orders <span id="sort-orders-icon">&#9660;</span></th>
-                  <th class="num top-sort" data-col="pos" style="cursor:pointer">POS <span id="sort-pos-icon"></span></th>
-                </tr></thead>
-                <tbody id="top-items-body"></tbody>
-              </table>
+            <div id="top-items-content" class="mt-4">
+              <div class="grid-container" style="max-height:350px">
+                <table class="data-grid">
+                  <thead><tr>
+                    <th style="min-width:100px">Customer</th>
+                    <th style="min-width:100px">Product</th>
+                    <th class="num top-sort" data-col="orders" style="cursor:pointer">Orders <span id="sort-orders-icon">&#9660;</span></th>
+                    <th class="num top-sort" data-col="pos" style="cursor:pointer">POS <span id="sort-pos-icon"></span></th>
+                  </tr></thead>
+                  <tbody id="top-items-body"></tbody>
+                </table>
+              </div>
             </div>
           </div>
 
@@ -3265,6 +3267,13 @@ function renderGrid(rows) {
 // TOP ITEMS — Last 3 included months, ranked by Orders or POS
 // ============================================================
 let topItemsSort = { col: 'orders', dir: 'desc' }; // default: orders descending
+
+function toggleTopItems() {
+  const content = document.getElementById('top-items-content');
+  const arrow = document.getElementById('top-items-arrow');
+  const isHidden = content.classList.toggle('hidden');
+  arrow.innerHTML = isHidden ? '&#9654;' : '&#9660;';
+}
 
 function renderTopItems() {
   const tbody = document.getElementById('top-items-body');
