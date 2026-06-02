@@ -18,6 +18,7 @@ export interface ParsedRow {
   invoiceCases: number | null;
   orderCases: number | null;
   forecast: number | null;
+  customerPosProjection: number | null; // optional, forward-looking POS the customer expects to sell
 }
 
 export interface Customer {
@@ -41,6 +42,7 @@ export interface DashboardRow {
   orderCases: number | null;
   existingForecast: number | null;
   statForecast: number | null;
+  customerPosProjection: number | null;
   overrideVal: number | null;
   finalValue: number | null;
   isHistorical: boolean;

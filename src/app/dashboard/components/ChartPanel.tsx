@@ -33,6 +33,7 @@ export function ChartPanel({ rows }: ChartPanelProps) {
     Orders: r.orderCases,
     'Existing Forecast': r.existingForecast,
     'Stat Forecast': r.statForecast,
+    'Customer POS Projection': r.customerPosProjection,
     Override: r.overrideVal,
   }));
 
@@ -92,6 +93,16 @@ export function ChartPanel({ rows }: ChartPanelProps) {
             stroke="#8b5cf6"
             strokeWidth={2}
             strokeDasharray="6 3"
+            dot={false}
+            connectNulls
+          />
+
+          <Line
+            type="monotone"
+            dataKey="Customer POS Projection"
+            stroke="#0891b2"
+            strokeWidth={2}
+            strokeDasharray="2 2"
             dot={false}
             connectNulls
           />

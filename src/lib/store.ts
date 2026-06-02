@@ -212,6 +212,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // Aggregate actuals by month
     const actualMap = new Map<string, { pos: number; invoice: number; order: number }>();
     const existingForecastMap = new Map<string, number>();
+    const projectionMap = new Map<string, number>();
 
     for (const row of filtered) {
       const hasActuals = (row.posCases ?? 0) > 0 || (row.invoiceCases ?? 0) > 0 || (row.orderCases ?? 0) > 0;
@@ -227,6 +228,10 @@ export const useAppStore = create<AppState>((set, get) => ({
         const prev = existingForecastMap.get(row.month) ?? 0;
         existingForecastMap.set(row.month, prev + row.forecast);
       }
+      if (row.customerPosProjection != null) {
+        const prev = projectionMap.get(row.month) ?? 0;
+        projectionMap.set(row.month, prev + row.customerPosProjection);
+      }
     }
 
     // Get stat forecast results for current filter key
@@ -239,6 +244,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     actualMap.forEach((_, m) => allMonths.add(m));
     existingForecastMap.forEach((_, m) => allMonths.add(m));
     statMap.forEach((_, m) => allMonths.add(m));
+    projectionMap.forEach((_, m) => allMonths.add(m));
 
     const overridePrefix = `${filters.customerId ?? 'all'}|${filters.productId ?? 'all'}|`;
 
@@ -246,6 +252,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const actual = actualMap.get(month);
       const existing = existingForecastMap.get(month);
       const stat = statMap.get(month);
+      const projection = projectionMap.get(month);
       const overrideKey = overridePrefix + month;
       const override = overrides.get(overrideKey);
       const isHistorical = !!actual;
@@ -257,6 +264,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         orderCases: actual?.order ?? null,
         existingForecast: existing ?? null,
         statForecast: stat ?? null,
+        customerPosProjection: projection ?? null,
         overrideVal: override?.value ?? null,
         finalValue: override?.value ?? stat ?? existing ?? null,
         isHistorical,

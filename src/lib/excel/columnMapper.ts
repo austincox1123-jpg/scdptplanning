@@ -11,6 +11,7 @@ export const COLUMN_MAP: Record<string, string> = {
   'INVOICE CASES': 'invoiceCases',
   'ORDER CASES': 'orderCases',
   'FORECAST': 'forecast',
+  'CUSTOMER POS PROJECTION CASES': 'customerPosProjection',
 };
 
 export const REQUIRED_COLUMNS = [

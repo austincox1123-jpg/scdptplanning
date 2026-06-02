@@ -88,6 +88,7 @@ export function parseExcelBuffer(buffer: ArrayBuffer): ParseResult {
         invoiceCases: mapped.invoiceCases != null && mapped.invoiceCases !== '' ? Number(mapped.invoiceCases) : null,
         orderCases: mapped.orderCases != null && mapped.orderCases !== '' ? Number(mapped.orderCases) : null,
         forecast: mapped.forecast != null && mapped.forecast !== '' ? Number(mapped.forecast) : null,
+        customerPosProjection: mapped.customerPosProjection != null && mapped.customerPosProjection !== '' ? Number(mapped.customerPosProjection) : null,
       });
     }
 

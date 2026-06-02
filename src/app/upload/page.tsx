@@ -87,6 +87,7 @@ export default function UploadPage() {
           <span className="font-mono bg-white px-2 py-1 rounded border">INVOICE CASES</span>
           <span className="font-mono bg-white px-2 py-1 rounded border">ORDER CASES</span>
           <span className="font-mono bg-white px-2 py-1 rounded border">FORECAST</span>
+          <span className="font-mono bg-white px-2 py-1 rounded border">CUSTOMER POS PROJECTION CASES</span>
         </div>
         <p className="text-xs text-gray-500 mt-2">* Required columns</p>
       </div>

@@ -61,6 +61,14 @@ export function DataGrid({ rows, onOverride }: DataGridProps) {
         cellStyle: { color: '#8b5cf6' } as CellStyle,
       },
       {
+        field: 'customerPosProjection',
+        headerName: 'Cust POS Proj',
+        width: 140,
+        type: 'numericColumn',
+        valueFormatter: (p) => p.value != null ? Number(p.value).toLocaleString() : '',
+        cellStyle: { color: '#0891b2' } as CellStyle,
+      },
+      {
         field: 'overrideVal',
         headerName: 'Override',
         width: 120,

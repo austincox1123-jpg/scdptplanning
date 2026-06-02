@@ -64,6 +64,7 @@ export async function exportToExcel(
     { header: 'Month', key: 'month', width: 15 },
     { header: 'Final Value', key: 'finalValue', width: 20 },
     { header: 'Override', key: 'override', width: 15 },
+    { header: 'Customer POS Projection', key: 'customerPosProjection', width: 24 },
     { header: 'Source', key: 'source', width: 15 },
   ];
   for (const row of rows.filter(r => !r.isHistorical)) {
@@ -71,6 +72,7 @@ export async function exportToExcel(
       month: row.month,
       finalValue: row.finalValue,
       override: row.overrideVal,
+      customerPosProjection: row.customerPosProjection,
       source: row.overrideVal != null ? 'Override' : 'Statistical',
     });
   }
