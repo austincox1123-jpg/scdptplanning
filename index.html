@@ -103,6 +103,26 @@
     .override-cell input { background: #dcfce7 !important; color: #166534; font-weight: 600; }
     .stat-color { color: #8b5cf6; }
     .final-bold { font-weight: 700; }
+    /* Grouped 2-row header (main grid only) */
+    .data-grid.grouped thead tr.group-row th { position: sticky; top: 0; z-index: 3; height: 26px; padding: 4px 12px; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; }
+    .data-grid.grouped thead tr.col-row th { top: 26px; }
+    .data-grid.grouped thead tr.group-row .grp-actuals { background: #eff6ff; color: #1d4ed8; }
+    .data-grid.grouped thead tr.group-row .grp-forecast { background: #f5f3ff; color: #6d28d9; }
+    .data-grid.grouped thead tr.group-row .grp-decision { background: #f0fdf4; color: #15803d; }
+    .data-grid .grp-start { border-left: 2px solid #e5e7eb; }
+    /* Future (forecast) rows — visually separate from historical actuals */
+    .data-grid tr.future-row td { background: #fafbff; }
+    .data-grid tr.future-row:hover td { background: #eef2ff; }
+    .data-grid tr.forecast-start td { border-top: 2px solid #c7d2fe; }
+    /* Override input affordance — dashed accent signals editability before a value is set */
+    .data-grid input.ov-input { border-style: dashed; border-color: #a5b4fc; }
+    .data-grid input.ov-input:focus { border-style: solid; }
+    .data-grid .override-cell input.ov-input { border-style: solid; }
+    .data-grid input.ov-input::placeholder { color: #c7d2fe; }
+    /* Responsive bottom grids */
+    .tri-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-top: 16px; }
+    @media (max-width: 1200px) { .tri-grid { grid-template-columns: 1fr 1fr; } }
+    @media (max-width: 768px) { .tri-grid { grid-template-columns: 1fr; } }
     /* Config sidebar */
     .config-space > * + * { margin-top: 16px; }
     .checkbox-row { display: flex; align-items: center; gap: 8px; }
@@ -130,7 +150,7 @@
     .btn-secondary { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 6px; font-size: 12px; font-weight: 500; }
     .btn-secondary:hover { background: #e5e7eb; }
     .best-method-result { margin-top: 8px; padding: 8px 10px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; font-size: 12px; color: #166534; }
-    .variance-pos { color: #dc2626; } .variance-neg { color: #2563eb; } .variance-zero { color: #9ca3af; }
+    .variance-pos { color: #0369a1; } .variance-neg { color: #b45309; } .variance-zero { color: #9ca3af; }
     .promo-tag { display:inline-block; padding:1px 6px; border-radius:3px; font-size:10px; font-weight:600; cursor:pointer; user-select:none; }
     .promo-tag-promo { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
     .promo-tag-outlier { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
@@ -377,9 +397,16 @@
           <!-- Data grid -->
           <div class="card mt-4" style="overflow:hidden">
             <div class="grid-container">
-              <table class="data-grid">
-                <thead><tr>
-                  <th>Month</th><th style="text-align:center; width:50px;">Tag</th><th class="num">Wks</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Cust POS Proj</th><th class="num">Variance</th><th class="num">Override</th><th class="num">Final</th>
+              <table class="data-grid grouped">
+                <thead>
+                <tr class="group-row">
+                  <th colspan="3">Period</th>
+                  <th colspan="3" class="grp-actuals grp-start">History (Actuals)</th>
+                  <th colspan="4" class="grp-forecast grp-start">Forecast</th>
+                  <th colspan="2" class="grp-decision grp-start">Decision</th>
+                </tr>
+                <tr class="col-row">
+                  <th>Month</th><th style="text-align:center; width:50px;">Tag</th><th class="num">Wks</th><th class="num grp-start">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num grp-start">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num" title="Stat Forecast − Existing Forecast">Variance</th><th class="num">Cust POS Proj</th><th class="num grp-start">Override</th><th class="num">Final</th>
                 </tr></thead>
                 <tbody id="grid-body"></tbody>
               </table>
@@ -387,7 +414,7 @@
           </div>
 
           <!-- Horizontal row: Top Items | Zero-Out Log | Gaps side by side -->
-          <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px; margin-top:16px;">
+          <div class="tri-grid">
 
             <!-- Top Items -->
             <div class="card p-4" id="top-items-section">
@@ -2792,15 +2819,6 @@ function runBacktest() {
   const params = getConfigParams();
   const LAG = 2;
 
-  // Build total actual orders by month from ALL filtered rows (matches the chart exactly)
-  const chartActualsByMonth = new Map();
-  for (const r of filtered) {
-    if (state.excludedMonths.has(r.month)) continue;
-    if ((r.orderCases || 0) > 0) {
-      chartActualsByMonth.set(r.month, (chartActualsByMonth.get(r.month) || 0) + (r.orderCases || 0));
-    }
-  }
-
   // Group filtered rows by customer|product
   const skuGroups = new Map();
   for (const r of filtered) {
@@ -2861,14 +2879,16 @@ function runBacktest() {
 
   if (allErrors.length === 0) return null;
 
-  // Build detail rows — actual orders from ALL filtered data (matches chart exactly),
-  // forecast from backtested SKUs only
+  // Build detail rows — actual AND forecast both come from the SAME backtested SKU set.
+  // (Previously the actual was summed over ALL filtered SKUs while the forecast covered only
+  // SKUs with enough history to backtest, which made months with skipped SKUs look like a
+  // systematic under-forecast and inflated WMAPE. mr.actual is the like-for-like total.)
   const results = [...monthRollup.entries()].sort((a,b) => a[0].localeCompare(b[0])).map(([month, mr]) => {
-    const chartActual = chartActualsByMonth.get(month) || mr.actual;
-    const error = mr.forecast - chartActual;
+    const actual = mr.actual;
+    const error = mr.forecast - actual;
     const absError = Math.abs(error);
-    const absPctError = chartActual > 0 ? absError / chartActual : (mr.forecast > 0 ? 1.0 : 0);
-    return { month, actual: chartActual, forecast: mr.forecast, error, absError, absPctError };
+    const absPctError = actual > 0 ? absError / actual : (mr.forecast > 0 ? 1.0 : 0);
+    return { month, actual, forecast: mr.forecast, error, absError, absPctError };
   });
 
   // Summary metrics computed FROM the detail rows so they're 100% consistent
@@ -3376,7 +3396,8 @@ function buildGridRow(r, isWeekDetail) {
   if (displayStat != null && r.existingForecast != null) {
     const v = displayStat - r.existingForecast;
     const cls = v > 0 ? 'variance-pos' : v < 0 ? 'variance-neg' : 'variance-zero';
-    varianceHtml = '<td class="num ' + cls + '">' + (v > 0 ? '+' : '') + fmt(v) + '</td>';
+    const arrow = v > 0 ? '▲ ' : v < 0 ? '▼ ' : '';
+    varianceHtml = '<td class="num ' + cls + '">' + arrow + (v > 0 ? '+' : '') + fmt(v) + '</td>';
   } else {
     varianceHtml = '<td class="num"></td>';
   }
@@ -3397,16 +3418,16 @@ function buildGridRow(r, isWeekDetail) {
   return '<td>' + label + '</td>' +
     promoCell +
     '<td class="num" style="color:#9ca3af">' + (wks != null ? wks : '') + '</td>' +
-    '<td class="num">' + fmt(r.posCases) + '</td>' +
+    '<td class="num grp-start">' + fmt(r.posCases) + '</td>' +
     '<td class="num">' + fmt(r.invoiceCases) + '</td>' +
     '<td class="num">' + fmt(r.orderCases) + '</td>' +
-    '<td class="num">' + fmt(r.existingForecast) + '</td>' +
+    '<td class="num grp-start">' + fmt(r.existingForecast) + '</td>' +
     '<td class="num stat-color"' + statStyle + '>' + fmt(displayStat) + '</td>' +
-    '<td class="num" style="color:#0891b2">' + fmt(r.customerPosProjection) + '</td>' +
     varianceHtml +
+    '<td class="num" style="color:#0891b2">' + fmt(r.customerPosProjection) + '</td>' +
     (r.isHistorical || isWeekDetail
-      ? '<td class="num"></td>'
-      : '<td class="num' + (r.overrideVal != null ? ' override-cell' : '') + '"><input type="number" value="' + (r.overrideVal ?? '') + '" data-month="' + safeMonth + '"></td>') +
+      ? '<td class="num grp-start"></td>'
+      : '<td class="num grp-start' + (r.overrideVal != null ? ' override-cell' : '') + '"><input type="number" class="ov-input" placeholder="set" value="' + (r.overrideVal ?? '') + '" data-month="' + safeMonth + '"></td>') +
     '<td class="num final-bold">' + fmt(r.finalValue) + '</td>';
 }
 
@@ -3415,8 +3436,14 @@ function renderGrid(rows) {
   const frag = document.createDocumentFragment();
   const hasWeekRows = state.isWeekly && rows.some(r => r.weekRows && r.weekRows.length > 0);
 
+  let firstFutureSeen = false;
   for (const r of rows) {
     const tr = document.createElement('tr');
+    // Visually separate forecast (future) rows from historical actuals
+    if (!r.isHistorical) {
+      tr.classList.add('future-row');
+      if (!firstFutureSeen) { tr.classList.add('forecast-start'); firstFutureSeen = true; }
+    }
     // Add expand button if this month has week detail
     const canExpand = hasWeekRows && r.weekRows && r.weekRows.length > 0;
     const expandPrefix = canExpand ? '<button class="expand-btn" data-expand="' + sanitize(r.month) + '">&#9654;</button> ' : '';
