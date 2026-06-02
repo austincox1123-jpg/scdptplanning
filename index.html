@@ -249,6 +249,7 @@
             <span class="col-tag">INVOICE_CASES</span>
             <span class="col-tag">ORDER_CASES</span>
             <span class="col-tag">FORECAST</span>
+            <span class="col-tag">CUSTOMER_POS_PROJECTION_CASES</span>
             <span class="col-tag">WEEK_NUMBER_OF_MONTH</span>
           </div>
           <p class="text-xs text-gray-400 mt-2">* Required columns</p>
@@ -378,7 +379,7 @@
             <div class="grid-container">
               <table class="data-grid">
                 <thead><tr>
-                  <th>Month</th><th style="text-align:center; width:50px;">Tag</th><th class="num">Wks</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Variance</th><th class="num">Override</th><th class="num">Final</th>
+                  <th>Month</th><th style="text-align:center; width:50px;">Tag</th><th class="num">Wks</th><th class="num">POS Cases</th><th class="num">Invoice Cases</th><th class="num">Order Cases</th><th class="num">Existing Fcst</th><th class="num">Stat Forecast</th><th class="num">Cust POS Proj</th><th class="num">Variance</th><th class="num">Override</th><th class="num">Final</th>
                 </tr></thead>
                 <tbody id="grid-body"></tbody>
               </table>
@@ -837,6 +838,7 @@ const COLUMN_MAP = {
   'FORMATION': 'formation', 'PRODUCTNAME': 'productName', 'PRODUCTNUMBER': 'productNumber',
   'POS_CASES': 'posCases',
   'INVOICE_CASES': 'invoiceCases', 'ORDER_CASES': 'orderCases', 'FORECAST': 'forecast',
+  'CUSTOMER_POS_PROJECTION_CASES': 'customerPosProjection', 'CUSTOMER POS PROJECTION CASES': 'customerPosProjection',
   'MAX_WKS_PER_MONTH': 'maxWksPerMonth',
   'MONTH_NUMBER_OF_YEAR': 'monthNumber', 'YEAR': 'year',
   'WEEK_NUMBER_OF_MONTH': 'weekNumber',
@@ -887,6 +889,7 @@ function parseFile(buffer) {
         formation: String(m.formation||'').trim(), productName: String(m.productName||'').trim(),
         productNumber, month, posCases: toNum(m.posCases), invoiceCases: toNum(m.invoiceCases),
         orderCases: toNum(m.orderCases), forecast: toNum(m.forecast),
+        customerPosProjection: toNum(m.customerPosProjection),
         maxWksPerMonth: toNum(m.maxWksPerMonth),
         weekNumber: toNum(m.weekNumber) });
     }
@@ -921,7 +924,7 @@ function parseFile(buffer) {
       while (yr < endYr || (yr === endYr && mo <= endMo)) {
         const monthKey = yr + '-' + String(mo).padStart(2,'0') + '-15';
         if (!cd.months.has(monthKey)) {
-          rows.push({ ...cd.meta, month: monthKey, posCases: 0, invoiceCases: 0, orderCases: 0, forecast: null, maxWksPerMonth: null, weekNumber: null });
+          rows.push({ ...cd.meta, month: monthKey, posCases: 0, invoiceCases: 0, orderCases: 0, forecast: null, customerPosProjection: null, maxWksPerMonth: null, weekNumber: null });
         }
         mo++;
         if (mo > 12) { mo = 1; yr++; }
@@ -3013,6 +3016,13 @@ function getDashboardRows() {
 
   const overridePrefix = fcKey + '|';
 
+  // Customer POS projection — optional, forward-looking, display-only.
+  // Aggregate per month across the filtered rows (independent of weekly/monthly path).
+  const projectionMap = new Map();
+  for (const r of filtered) {
+    if (r.customerPosProjection != null) projectionMap.set(r.month, (projectionMap.get(r.month) || 0) + r.customerPosProjection);
+  }
+
   // Build weekly-level rows if data is weekly
   if (state.isWeekly) {
     // Stat forecast results are monthly (keys like "2026-03-15").
@@ -3096,7 +3106,7 @@ function getDashboardRows() {
 
     monthAgg.forEach(ma => ma.weekRows.sort((a,b) => a.timeKey.localeCompare(b.timeKey)));
 
-    const allMonths = [...monthAgg.keys(), ...monthlyStatMap.keys()];
+    const allMonths = [...monthAgg.keys(), ...monthlyStatMap.keys(), ...projectionMap.keys()];
     const uniqueMonths = [...new Set(allMonths)].sort();
 
     const result = uniqueMonths.map(month => {
@@ -3111,6 +3121,7 @@ function getDashboardRows() {
         invoiceCases: (ma && ma.hasActuals) ? ma.invoice : null,
         orderCases: (ma && ma.hasActuals) ? ma.order : null,
         existingForecast, statForecast: roundedStat,
+        customerPosProjection: projectionMap.get(month) ?? null,
         overrideVal: ov??null, finalValue: ov??roundedStat??existingForecast??null,
         isHistorical, weekRows: ma ? ma.weekRows : []
       };
@@ -3137,6 +3148,7 @@ function getDashboardRows() {
   actualMap.forEach((_,m) => allMonths.add(m));
   existingFcstMap.forEach((_,m) => allMonths.add(m));
   statMap.forEach((_,m) => allMonths.add(m));
+  projectionMap.forEach((_,m) => allMonths.add(m));
 
   const result = [...allMonths].sort().map(month => {
     const actual = actualMap.get(month);
@@ -3146,6 +3158,7 @@ function getDashboardRows() {
     const isHistorical = !!actual;
     return { month, posCases: actual?actual.pos:null, invoiceCases: actual?actual.invoice:null,
       orderCases: actual?actual.order:null, existingForecast: existing??null, statForecast: stat??null,
+      customerPosProjection: projectionMap.get(month) ?? null,
       overrideVal: ov??null, finalValue: ov??stat??existing??null, isHistorical, weekRows: [] };
   });
   state._cache.dashKey = key;
@@ -3239,6 +3252,7 @@ function renderChart(rows) {
     { label: 'Orders', data: chartRows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Existing Fcst', data: chartRows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Stat Forecast', data: chartRows.map(r=>r.statForecast ?? r.backtestForecast ?? null), borderColor: '#8b5cf6', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'Cust POS Proj', data: chartRows.map(r=>r.customerPosProjection), borderColor: '#0891b2', borderWidth: 2, borderDash: [2,2], pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Override', data: chartRows.map(r=>r.overrideVal), borderColor: '#22c55e', borderWidth: 0, pointRadius: chartRows.map(r=>r.overrideVal!=null?5:0), pointBackgroundColor: '#22c55e', spanGaps: false, showLine: false },
     // Promo/outlier markers — show on the order line (or POS if no orders)
     { label: 'Promo/Outlier', data: chartRows.map(r => {
@@ -3388,6 +3402,7 @@ function buildGridRow(r, isWeekDetail) {
     '<td class="num">' + fmt(r.orderCases) + '</td>' +
     '<td class="num">' + fmt(r.existingForecast) + '</td>' +
     '<td class="num stat-color"' + statStyle + '>' + fmt(displayStat) + '</td>' +
+    '<td class="num" style="color:#0891b2">' + fmt(r.customerPosProjection) + '</td>' +
     varianceHtml +
     (r.isHistorical || isWeekDetail
       ? '<td class="num"></td>'
@@ -4643,8 +4658,8 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
         monthMap.set(mk, {
           customerName: r.customerName, brand: r.brand, type: r.type, formation: r.formation,
           productName: r.productName, productNumber: r.productNumber, month: r.month,
-          posCases: 0, invoiceCases: 0, orderCases: 0, forecast: 0,
-          maxWksPerMonth: r.maxWksPerMonth, _hasFcst: false, _hasActuals: false
+          posCases: 0, invoiceCases: 0, orderCases: 0, forecast: 0, customerPosProjection: 0,
+          maxWksPerMonth: r.maxWksPerMonth, _hasFcst: false, _hasActuals: false, _hasProj: false
         });
       }
       const agg = monthMap.get(mk);
@@ -4652,6 +4667,7 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       if (r.invoiceCases != null) { agg.invoiceCases += r.invoiceCases; agg._hasActuals = true; }
       if (r.orderCases != null) { agg.orderCases += r.orderCases; agg._hasActuals = true; }
       if (r.forecast != null) { agg.forecast += r.forecast; agg._hasFcst = true; }
+      if (r.customerPosProjection != null) { agg.customerPosProjection += r.customerPosProjection; agg._hasProj = true; }
     }
     return [...monthMap.values()].map(r => {
       const fcKey = r.customerName + '|' + r.productNumber;
@@ -4669,6 +4685,7 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
         'INVOICE_CASES': r._hasActuals ? r.invoiceCases : null,
         'ORDER_CASES': r._hasActuals ? r.orderCases : null,
         FORECAST: r._hasFcst ? r.forecast : null,
+        'CUSTOMER_POS_PROJECTION_CASES': r._hasProj ? r.customerPosProjection : null,
       };
       // Weeks per month from config (not upload)
     const moParts = r.month ? r.month.match(/^(\d{4})-(\d{2})/) : null;
@@ -4694,6 +4711,7 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
       'POS_CASES': r.posCases, 'INVOICE_CASES': r.invoiceCases,
       'ORDER_CASES': r.orderCases, FORECAST: r.forecast,
+      'CUSTOMER_POS_PROJECTION_CASES': r.customerPosProjection,
     };
     // Weeks per month from config (not upload)
     const moParts = r.month ? r.month.match(/^(\d{4})-(\d{2})/) : null;
@@ -4744,6 +4762,7 @@ function buildWeeklyExportRows(customerFilter, productFilter, skuForecastMap, ov
       WEEK_NUMBER_OF_MONTH: r.weekNumber || null,
       'POS_CASES': r.posCases, 'INVOICE_CASES': r.invoiceCases,
       'ORDER_CASES': r.orderCases, FORECAST: r.forecast,
+      'CUSTOMER_POS_PROJECTION_CASES': r.customerPosProjection,
       MAX_WKS_PER_MONTH: wks,
       'WEEKLY STAT FORECAST': weeklyStat,
       'UPDATED FORECAST': updatedForecast,
@@ -4778,6 +4797,7 @@ function buildWeeklyExportRows(customerFilter, productFilter, skuForecastMap, ov
           YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
           WEEK_NUMBER_OF_MONTH: w,
           'POS_CASES': null, 'INVOICE_CASES': null, 'ORDER_CASES': null, FORECAST: null,
+          'CUSTOMER_POS_PROJECTION_CASES': null,
           MAX_WKS_PER_MONTH: wks,
           'WEEKLY STAT FORECAST': weeklyStat,
           'UPDATED FORECAST': ov ?? weeklyStat,
