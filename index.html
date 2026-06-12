@@ -533,7 +533,7 @@
             </div>
             <div>
               <label class="label">Data Source</label>
-              <select id="cfg-source" class="select-field select-sm">
+              <select id="cfg-source" onchange="onSourceChange()" class="select-field select-sm">
                 <option value="pos">POS Cases</option>
                 <option value="invoice" selected>Invoice Cases</option>
                 <option value="order">Order Cases</option>
@@ -1177,8 +1177,14 @@ function runForecastEngine(actuals, params, horizon) {
     case 'weighted_ma': results = weightedMovingAverage(series, params, horizon); break;
     case 'exp_smoothing': results = exponentialSmoothing(series, params, horizon); break;
     case 'pos_lag': {
+      // pos_lag forecasts a shipment series from POS; when the source IS POS there is
+      // no shipment target — fall back to weighted MA on the POS series itself
+      if (params.source === 'pos') {
+        results = weightedMovingAverage(series, params, horizon);
+        break;
+      }
       const pos = normalizeSeries(extractSeries(actuals, 'pos'));
-      const ship = normalizeSeries(extractSeries(actuals, params.source === 'pos' ? 'invoice' : params.source));
+      const ship = normalizeSeries(extractSeries(actuals, params.source));
       results = posToShipmentLag(pos, ship, 2, params.window, horizon);
       break;
     }
@@ -1969,7 +1975,7 @@ function populateFilters() {
   const posLag = document.querySelector('#cfg-method option[value="pos_lag"]');
   const conRate = document.querySelector('#cfg-method option[value="consumption_rate"]');
   const posSrc = document.querySelector('#cfg-source option[value="pos"]');
-  if (posLag) posLag.disabled = !state.hasPosData;
+  if (posLag) posLag.disabled = !state.hasPosData || document.getElementById('cfg-source').value === 'pos';
   if (conRate) conRate.disabled = !state.hasPosData;
   if (posSrc) posSrc.disabled = !state.hasPosData;
 }
@@ -2059,6 +2065,17 @@ function onConfigChange() {
   const method = document.getElementById('cfg-method').value;
   document.getElementById('weight-section').classList.toggle('hidden', method !== 'weighted_ma');
   document.getElementById('alpha-section').classList.toggle('hidden', method !== 'exp_smoothing');
+}
+
+function onSourceChange() {
+  const source = document.getElementById('cfg-source').value;
+  const methodSelect = document.getElementById('cfg-method');
+  const posLagOpt = methodSelect.querySelector('option[value="pos_lag"]');
+  if (posLagOpt) posLagOpt.disabled = (source === 'pos') || !state.hasPosData;
+  if (source === 'pos' && methodSelect.value === 'pos_lag') {
+    methodSelect.value = 'weighted_ma';
+  }
+  onConfigChange();
 }
 
 // Toggle backstop options visibility
@@ -2375,7 +2392,8 @@ function findBestMethodForData(actualData, baseParams) {
 
   // Available methods
   let methods = ['linear_avg', 'weighted_ma', 'exp_smoothing', 'linear_slope'];
-  if (hasPOS) {
+  // pos_lag maps POS onto a shipment series — only valid when forecasting shipments, not POS itself
+  if (hasPOS && baseParams.source !== 'pos') {
     methods.push('pos_lag');
   }
 
