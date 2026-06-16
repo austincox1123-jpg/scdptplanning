@@ -347,6 +347,14 @@
           <label class="label">Formation</label>
           <select id="filter-formation" onchange="onFilterChange()" class="select-field"><option value="">All Formations</option></select>
         </div>
+        <div class="filter-group">
+          <label class="label">Assortment Log Status</label>
+          <select id="filter-assortment" onchange="onFilterChange()" class="select-field"><option value="">All</option></select>
+        </div>
+        <div class="filter-group">
+          <label class="label">Merchandising</label>
+          <select id="filter-merchandising" onchange="onFilterChange()" class="select-field"><option value="">All</option></select>
+        </div>
         <div class="filter-group-lg">
           <label class="label">Product</label>
           <div style="display:flex; gap:4px; align-items:center;">
@@ -784,7 +792,7 @@ const state = {
   fileName: null,
   customers: [],
   products: [],
-  filters: { customer: '', brand: '', type: '', formation: '', product: '' },
+  filters: { customer: '', brand: '', type: '', formation: '', assortmentLogStatus: '', merchandising: '', product: '' },
   forecastResults: {},   // key "customer|product" => [{month, statValue}]
   skuForecasts: {},      // key "customer|productNumber" => [{month, statValue}] — SAVED forecasts
   previewResults: {},    // key "customer|product" => [{month, statValue}] — unsaved preview from Recalculate
@@ -866,6 +874,8 @@ function forecastMonth(lastKey, i) {
 const COLUMN_MAP = {
   'CUSTOMER_NAME': 'customerName', 'BRAND': 'brand', 'TYPE': 'type',
   'FORMATION': 'formation', 'PRODUCTNAME': 'productName', 'PRODUCTNUMBER': 'productNumber',
+  'ASSORTMENT LOG STATUS': 'assortmentLogStatus', 'ASSORTMENT_LOG_STATUS': 'assortmentLogStatus',
+  'MERCHANDISING': 'merchandising',
   'POS_CASES': 'posCases',
   'INVOICE_CASES': 'invoiceCases', 'ORDER_CASES': 'orderCases', 'FORECAST': 'forecast',
   'CUSTOMER_POS_PROJECTION_CASES': 'customerPosProjection', 'CUSTOMER POS PROJECTION CASES': 'customerPosProjection',
@@ -917,6 +927,7 @@ function parseFile(buffer) {
       const toNum = (v) => (v != null && v !== '' && !isNaN(Number(v))) ? Number(v) : null;
       rows.push({ customerName, brand: String(m.brand||'').trim(), type: String(m.type||'').trim(),
         formation: String(m.formation||'').trim(), productName: String(m.productName||'').trim(),
+        assortmentLogStatus: String(m.assortmentLogStatus||'').trim(), merchandising: String(m.merchandising||'').trim(),
         productNumber, month, posCases: toNum(m.posCases), invoiceCases: toNum(m.invoiceCases),
         orderCases: toNum(m.orderCases), forecast: toNum(m.forecast),
         customerPosProjection: toNum(m.customerPosProjection),
@@ -932,7 +943,7 @@ function parseFile(buffer) {
       const ck = r.customerName + '|' + r.productNumber;
       const hasActuals = (r.posCases != null && r.posCases > 0) || (r.invoiceCases != null && r.invoiceCases > 0) || (r.orderCases != null && r.orderCases > 0);
       if (!comboData.has(ck)) {
-        comboData.set(ck, { meta: { customerName: r.customerName, productNumber: r.productNumber, productName: r.productName, brand: r.brand, type: r.type, formation: r.formation }, months: new Set(), minMonth: null, maxMonth: null });
+        comboData.set(ck, { meta: { customerName: r.customerName, productNumber: r.productNumber, productName: r.productName, brand: r.brand, type: r.type, formation: r.formation, assortmentLogStatus: r.assortmentLogStatus, merchandising: r.merchandising }, months: new Set(), minMonth: null, maxMonth: null });
       }
       const cd = comboData.get(ck);
       cd.months.add(r.month);
@@ -1669,7 +1680,7 @@ function loadData(rows, fileName) {
   state._activeTagKey = null;
   state._activeMoqKey = null;
   state.weeksMap = {};
-  state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
+  state.filters = { customer: '', brand: '', type: '', formation: '', assortmentLogStatus: '', merchandising: '', product: '' };
   state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
 
   const custSet = new Map(), prodSet = new Map();
@@ -1978,7 +1989,7 @@ function resetWeeksToDefault() {
 // ============================================================
 function getFilterKey() {
   const f = state.filters;
-  return f.customer + '|' + f.brand + '|' + f.type + '|' + f.formation + '|' + f.product;
+  return f.customer + '|' + f.brand + '|' + f.type + '|' + f.formation + '|' + f.assortmentLogStatus + '|' + f.merchandising + '|' + f.product;
 }
 
 function getDashKey() {
@@ -1998,6 +2009,8 @@ function getFilteredRows() {
     if (f.brand && r.brand !== f.brand) return false;
     if (f.type && r.type !== f.type) return false;
     if (f.formation && r.formation !== f.formation) return false;
+    if (f.assortmentLogStatus && r.assortmentLogStatus !== f.assortmentLogStatus) return false;
+    if (f.merchandising && r.merchandising !== f.merchandising) return false;
     return true;
   });
   state._cache.filterKey = key;
@@ -2062,6 +2075,16 @@ function updateCascadingFilters() {
 
   // Step 5: Narrow by formation
   if (f.formation) pool = pool.filter(r => r.formation === f.formation);
+  const availAssortment = [...new Set(pool.map(r => r.assortmentLogStatus).filter(Boolean))].sort();
+  f.assortmentLogStatus = setSelectOpts('filter-assortment', availAssortment, a=>a, a=>a, 'All', f.assortmentLogStatus);
+
+  // Step 6: Narrow by assortment log status
+  if (f.assortmentLogStatus) pool = pool.filter(r => r.assortmentLogStatus === f.assortmentLogStatus);
+  const availMerch = [...new Set(pool.map(r => r.merchandising).filter(Boolean))].sort();
+  f.merchandising = setSelectOpts('filter-merchandising', availMerch, m=>m, m=>m, 'All', f.merchandising);
+
+  // Step 7: Narrow by merchandising
+  if (f.merchandising) pool = pool.filter(r => r.merchandising === f.merchandising);
   const availProducts = [...new Set(pool.map(r => r.productNumber))].map(pn => state.products.find(p => p.productNumber === pn)).filter(Boolean);
   availProducts.sort((a,b) => a.productName.localeCompare(b.productName));
   f.product = setSelectOpts('filter-product', availProducts, p=>p.productName, p=>p.productNumber, 'All Products', f.product);
@@ -2100,6 +2123,8 @@ function onFilterChange() {
   state.filters.brand = document.getElementById('filter-brand').value;
   state.filters.type = document.getElementById('filter-type').value;
   state.filters.formation = document.getElementById('filter-formation').value;
+  state.filters.assortmentLogStatus = document.getElementById('filter-assortment').value;
+  state.filters.merchandising = document.getElementById('filter-merchandising').value;
   state.filters.product = document.getElementById('filter-product').value;
   state.selectedSku = null; // clear drill selection when filters change
 
@@ -2116,7 +2141,7 @@ function onFilterChange() {
 }
 
 function resetFilters() {
-  state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
+  state.filters = { customer: '', brand: '', type: '', formation: '', assortmentLogStatus: '', merchandising: '', product: '' };
   state.selectedSku = null;
   updateCascadingFilters();
   invalidateCache();
@@ -2896,12 +2921,16 @@ function jumpToForecast(customer, product) {
   state.filters.brand = '';
   state.filters.type = '';
   state.filters.formation = '';
+  state.filters.assortmentLogStatus = '';
+  state.filters.merchandising = '';
 
   document.getElementById('filter-customer').value = customer;
   document.getElementById('filter-product').value = product;
   document.getElementById('filter-brand').value = '';
   document.getElementById('filter-type').value = '';
   document.getElementById('filter-formation').value = '';
+  document.getElementById('filter-assortment').value = '';
+  document.getElementById('filter-merchandising').value = '';
 
   // Load the saved SKU forecast into forecastResults for display
   const key = customer + '|' + product;
@@ -3653,7 +3682,7 @@ function renderTopItems() {
   const sel = state.selectedSku;
 
   // Show "Back to All" when a SKU is selected or filters are active
-  const hasFilters = sel || state.filters.customer || state.filters.product || state.filters.brand || state.filters.type || state.filters.formation;
+  const hasFilters = sel || state.filters.customer || state.filters.product || state.filters.brand || state.filters.type || state.filters.formation || state.filters.assortmentLogStatus || state.filters.merchandising;
   document.getElementById('back-to-all-btn').classList.toggle('hidden', !hasFilters);
 
   // Use filtered rows so top items respects current filter selections
@@ -4820,6 +4849,7 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       const parts = r.month.split('-');
       const row = {
         CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
+        'ASSORTMENT LOG STATUS': r.assortmentLogStatus, MERCHANDISING: r.merchandising,
         PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
         YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
         'POS_CASES': r._hasActuals ? r.posCases : null,
@@ -4848,6 +4878,7 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
     const parts = r.month.split('-');
     const row = {
       CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
+      'ASSORTMENT LOG STATUS': r.assortmentLogStatus, MERCHANDISING: r.merchandising,
       PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
       YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
       'POS_CASES': r.posCases, 'INVOICE_CASES': r.invoiceCases,
@@ -4898,6 +4929,7 @@ function buildWeeklyExportRows(customerFilter, productFilter, skuForecastMap, ov
     const parts = r.month.split('-');
     const row = {
       CUSTOMER_NAME: r.customerName, BRAND: r.brand, TYPE: r.type, FORMATION: r.formation,
+      'ASSORTMENT LOG STATUS': r.assortmentLogStatus, MERCHANDISING: r.merchandising,
       PRODUCTNAME: r.productName, PRODUCTNUMBER: r.productNumber,
       YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
       WEEK_NUMBER_OF_MONTH: r.weekNumber || null,
@@ -4934,6 +4966,7 @@ function buildWeeklyExportRows(customerFilter, productFilter, skuForecastMap, ov
 
         weeklyRows.push({
           CUSTOMER_NAME: customer, BRAND: sampleRow.brand, TYPE: sampleRow.type, FORMATION: sampleRow.formation,
+          'ASSORTMENT LOG STATUS': sampleRow.assortmentLogStatus, MERCHANDISING: sampleRow.merchandising,
           PRODUCTNAME: sampleRow.productName, PRODUCTNUMBER: product,
           YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
           WEEK_NUMBER_OF_MONTH: w,
