@@ -799,6 +799,7 @@ const state = {
   excludedByItem: {},    // item key => Set of excluded month keys
   promoByItem: {},       // item key => { month key => {type, lift} }
   _activeTagKey: null,   // item key the active excludedMonths/promoMonths currently point at
+  _activeMoqKey: null,   // item key the MOQ field/hint were last detected for
   isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
   weeksMap: {},          // month string => maxWksPerMonth value from upload
@@ -1666,6 +1667,7 @@ function loadData(rows, fileName) {
   state.excludedByItem = {};
   state.promoByItem = {};
   state._activeTagKey = null;
+  state._activeMoqKey = null;
   state.weeksMap = {};
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
   state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
@@ -1861,8 +1863,13 @@ function autoDetectOutliers() {
 // Returns { moq: number|null, message: string }.
 function computeMOQ() {
   const filtered = getFilteredRows();
-  // Get all non-zero order values
   const orders = filtered.map(r => r.orderCases).filter(v => v != null && v > 0);
+  return computeMOQFromOrders(orders);
+}
+
+// Detect the MOQ from a list of non-zero order quantities.
+// Returns { moq: number|null, message: string }.
+function computeMOQFromOrders(orders) {
   if (orders.length < 3) {
     return { moq: null, message: 'Not enough order data to detect MOQ' };
   }
@@ -1902,11 +1909,12 @@ function computeMOQ() {
   return { moq: null, message: 'No clear MOQ pattern detected in order history' };
 }
 
-// Toggle handler: when enabled, auto-detect MOQ from the current filter selection.
+// Toggle handler: when enabled, auto-detect MOQ for the on-screen product.
 function onMoqToggle() {
   const toggle = document.getElementById('cfg-moq-toggle');
   const moqField = document.getElementById('cfg-moq');
   const hint = document.getElementById('moq-hint');
+  state._activeMoqKey = currentItemKey();  // mark this product's MOQ as already resolved
 
   if (!toggle.checked) {
     moqField.value = '';
@@ -1927,6 +1935,29 @@ function onMoqToggle() {
     toggle.checked = false;
     showToast(result.message, 'error');
   }
+}
+
+// Re-detect the MOQ value for the product now on screen. The toggle is a single
+// global on/off; the detected quantity differs per product, so it refreshes on
+// every item change. No toast here — silent unlike the manual toggle.
+function syncMoqUI() {
+  const key = currentItemKey();
+  if (key === state._activeMoqKey) return;  // already resolved for this product
+  state._activeMoqKey = key;
+
+  const toggle = document.getElementById('cfg-moq-toggle');
+  const moqField = document.getElementById('cfg-moq');
+  const hint = document.getElementById('moq-hint');
+  if (!toggle.checked) {
+    moqField.value = '';
+    hint.style.display = 'none';
+    hint.textContent = '';
+    return;
+  }
+  const result = computeMOQ();
+  moqField.value = result.moq || '';
+  hint.textContent = result.message;
+  hint.style.display = '';
 }
 
 function resetWeeksToDefault() {
@@ -2073,9 +2104,10 @@ function onFilterChange() {
   state.selectedSku = null; // clear drill selection when filters change
 
   // Re-cascade first — it may reset an invalid product — then load this item's tags
-  // before any renderer (exclude-month chips, dashboard) reads them.
+  // and MOQ before any renderer (exclude-month chips, dashboard) reads them.
   updateCascadingFilters();
   syncActiveTags();
+  syncMoqUI();
   renderExcludeMonths();
 
   document.getElementById('save-forecast-btn').classList.add('hidden');
@@ -2528,6 +2560,7 @@ function bulkForecast() {
       let saved = 0, skipped = 0;
       const methodCounts = {};
       const restoreKey = state._activeTagKey;  // restore the on-screen item's tags after the run
+      const moqOn = document.getElementById('cfg-moq-toggle').checked;  // detect MOQ per product when on
       for (const [key, rows] of combos) {
         // Apply this SKU's own tagged outliers/promos (combo key is customer|product)
         setActiveItemTags(key);
@@ -2546,7 +2579,9 @@ function bulkForecast() {
         // Find best method, window, and alpha for this specific SKU
         // Detect item type for lead time logic (WT = wet, 7mo lead time)
         const itemType = (rows[0] || {}).type || '';
-        const skuParams = { ...baseParams, itemType };
+        // Round to this product's own MOQ (detected from its order history), not the on-screen one
+        const comboMoq = moqOn ? computeMOQFromOrders(rows.map(r => r.orderCases).filter(v => v != null && v > 0)).moq : null;
+        const skuParams = { ...baseParams, itemType, moq: (comboMoq && comboMoq > 1) ? comboMoq : null };
         const best = findBestMethodForData(actualData, skuParams);
         let results;
 
@@ -3267,8 +3302,9 @@ function getDashboardRows() {
 // ============================================================
 function renderDashboard() {
   try {
-    // Load this item's tags before anything reads excludedMonths/promoMonths
+    // Load this item's tags + MOQ before anything reads them
     syncActiveTags();
+    syncMoqUI();
     // Grid always uses the filter-bar filters (ignores selectedSku)
     const gridRows = getDashboardRows();
 
