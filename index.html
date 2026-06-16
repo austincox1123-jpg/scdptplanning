@@ -605,14 +605,11 @@
               <p class="text-xs text-gray-400 mt-1">Click <strong>+</strong> in Tag column: Promo(P) → Outlier(!) → Remove. Promo months apply lift to future promo windows. Outliers are deweighted in baseline.</p>
             </div>
             <div>
-              <div class="flex justify-between items-center">
-                <label class="label" style="margin-bottom:0">MOQ Rounding</label>
-                <button onclick="detectMOQ()" style="background:none; font-size:11px; color:#2563eb; text-decoration:underline; border:none; cursor:pointer;">Auto-detect</button>
+              <div class="checkbox-row">
+                <input type="checkbox" id="cfg-moq-toggle" onchange="onMoqToggle()">
+                <label for="cfg-moq-toggle" class="text-xs text-gray-600">MOQ Rounding (auto-detect)</label>
               </div>
-              <div class="flex gap-1 mt-1" style="align-items:center">
-                <input type="number" id="cfg-moq" min="1" value="" placeholder="None" style="width:60px; padding:4px 6px; border:1px solid #d1d5db; border-radius:4px; font-size:13px; text-align:right; font-family:inherit;">
-                <span class="text-xs text-gray-400">cases (blank = off)</span>
-              </div>
+              <input type="hidden" id="cfg-moq" value="">
               <p id="moq-hint" class="text-xs text-gray-400 mt-1" style="display:none"></p>
             </div>
             </div>
@@ -795,8 +792,13 @@ const state = {
   previewParams: null,   // config params used for the preview
   overrides: {},
   hasPosData: false,
-  excludedMonths: new Set(),  // set of "YYYY-MM-15" month keys to exclude from forecast
-  promoMonths: {},       // month key => { type: 'promo'|'outlier', lift: number|null } — tagged months
+  // Tags are scoped per item (customer|product). excludedMonths/promoMonths are live
+  // references into the current item's store, swapped by syncActiveTags() when the item changes.
+  excludedMonths: new Set(),  // ACTIVE item's set of "YYYY-MM-15" month keys excluded from forecast
+  promoMonths: {},       // ACTIVE item's month key => { type: 'promo'|'outlier', lift } — tagged months
+  excludedByItem: {},    // item key => Set of excluded month keys
+  promoByItem: {},       // item key => { month key => {type, lift} }
+  _activeTagKey: null,   // item key the active excludedMonths/promoMonths currently point at
   isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
   weeksMap: {},          // month string => maxWksPerMonth value from upload
@@ -1660,6 +1662,10 @@ function loadData(rows, fileName) {
   state.previewParams = null;
   state.overrides = {};
   state.excludedMonths = new Set();
+  state.promoMonths = {};
+  state.excludedByItem = {};
+  state.promoByItem = {};
+  state._activeTagKey = null;
   state.weeksMap = {};
   state.filters = { customer: '', brand: '', type: '', formation: '', product: '' };
   state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
@@ -1851,13 +1857,14 @@ function autoDetectOutliers() {
 // ============================================================
 // MOQ DETECTION
 // ============================================================
-function detectMOQ() {
+// Compute the MOQ from the current filtered order history.
+// Returns { moq: number|null, message: string }.
+function computeMOQ() {
   const filtered = getFilteredRows();
   // Get all non-zero order values
   const orders = filtered.map(r => r.orderCases).filter(v => v != null && v > 0);
   if (orders.length < 3) {
-    showToast('Not enough order data to detect MOQ', 'error');
-    return;
+    return { moq: null, message: 'Not enough order data to detect MOQ' };
   }
 
   // Round to integers for GCD calculation
@@ -1872,12 +1879,8 @@ function detectMOQ() {
 
   // If GCD is meaningful (>1), use it
   if (g > 1) {
-    document.getElementById('cfg-moq').value = g;
     const pct = (intOrders.filter(v => v % g === 0).length / intOrders.length * 100).toFixed(0);
-    document.getElementById('moq-hint').textContent = 'Detected MOQ: ' + g + ' (' + pct + '% of orders are exact multiples)';
-    document.getElementById('moq-hint').style.display = '';
-    showToast('Detected MOQ: ' + g, 'success');
-    return;
+    return { moq: g, message: 'Detected MOQ: ' + g + ' (' + pct + '% of orders are exact multiples)' };
   }
 
   // GCD is 1 — try common MOQ candidates and find which has highest match rate
@@ -1894,15 +1897,35 @@ function detectMOQ() {
   }
 
   if (bestMoq) {
-    document.getElementById('cfg-moq').value = bestMoq;
-    document.getElementById('moq-hint').textContent = 'Likely MOQ: ' + bestMoq + ' (' + (bestRate * 100).toFixed(0) + '% of orders align within 10%)';
-    document.getElementById('moq-hint').style.display = '';
-    showToast('Likely MOQ: ' + bestMoq + ' (' + (bestRate * 100).toFixed(0) + '% match)', 'success');
+    return { moq: bestMoq, message: 'Likely MOQ: ' + bestMoq + ' (' + (bestRate * 100).toFixed(0) + '% of orders align within 10%)' };
+  }
+  return { moq: null, message: 'No clear MOQ pattern detected in order history' };
+}
+
+// Toggle handler: when enabled, auto-detect MOQ from the current filter selection.
+function onMoqToggle() {
+  const toggle = document.getElementById('cfg-moq-toggle');
+  const moqField = document.getElementById('cfg-moq');
+  const hint = document.getElementById('moq-hint');
+
+  if (!toggle.checked) {
+    moqField.value = '';
+    hint.style.display = 'none';
+    hint.textContent = '';
+    return;
+  }
+
+  const result = computeMOQ();
+  hint.textContent = result.message;
+  hint.style.display = '';
+  if (result.moq) {
+    moqField.value = result.moq;
+    showToast(result.message, 'success');
   } else {
-    document.getElementById('cfg-moq').value = '';
-    document.getElementById('moq-hint').textContent = 'No clear MOQ pattern detected in order history';
-    document.getElementById('moq-hint').style.display = '';
-    showToast('No clear MOQ pattern found', 'error');
+    // No MOQ found — revert the toggle so rounding stays off
+    moqField.value = '';
+    toggle.checked = false;
+    showToast(result.message, 'error');
   }
 }
 
@@ -2013,6 +2036,34 @@ function updateCascadingFilters() {
   f.product = setSelectOpts('filter-product', availProducts, p=>p.productName, p=>p.productNumber, 'All Products', f.product);
 }
 
+// ============================================================
+// PER-ITEM TAG SCOPING
+// ============================================================
+// The current item = the filter combo (customer|product), matching how saved forecasts,
+// overrides, the grid, and bulk forecast all key items. Tags (excluded/promo/outlier
+// months) belong to this item, not the whole dataset.
+function currentItemKey() {
+  return (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+}
+
+// Point the active excludedMonths/promoMonths at the given item's store (creating it if new).
+// Returns the previous-active sets so callers (e.g. bulk forecast) can restore them.
+function setActiveItemTags(key) {
+  const prev = { excludedMonths: state.excludedMonths, promoMonths: state.promoMonths };
+  if (!state.excludedByItem[key]) state.excludedByItem[key] = new Set();
+  if (!state.promoByItem[key]) state.promoByItem[key] = {};
+  state.excludedMonths = state.excludedByItem[key];
+  state.promoMonths = state.promoByItem[key];
+  state._activeTagKey = key;
+  return prev;
+}
+
+// Ensure the active tags match the item now on screen. Called when the view changes.
+function syncActiveTags() {
+  const key = currentItemKey();
+  if (key !== state._activeTagKey) setActiveItemTags(key);
+}
+
 function onFilterChange() {
   state.filters.customer = document.getElementById('filter-customer').value;
   state.filters.brand = document.getElementById('filter-brand').value;
@@ -2021,8 +2072,10 @@ function onFilterChange() {
   state.filters.product = document.getElementById('filter-product').value;
   state.selectedSku = null; // clear drill selection when filters change
 
-  // Re-cascade: downstream filters may need to update
+  // Re-cascade first — it may reset an invalid product — then load this item's tags
+  // before any renderer (exclude-month chips, dashboard) reads them.
   updateCascadingFilters();
+  syncActiveTags();
   renderExcludeMonths();
 
   document.getElementById('save-forecast-btn').classList.add('hidden');
@@ -2474,7 +2527,10 @@ function bulkForecast() {
 
       let saved = 0, skipped = 0;
       const methodCounts = {};
+      const restoreKey = state._activeTagKey;  // restore the on-screen item's tags after the run
       for (const [key, rows] of combos) {
+        // Apply this SKU's own tagged outliers/promos (combo key is customer|product)
+        setActiveItemTags(key);
         const monthAgg = new Map();
         for (const r of rows) {
           if (state.excludedMonths.has(r.month)) continue;
@@ -2524,6 +2580,8 @@ function bulkForecast() {
         state.forecastResults[key] = results;
         saved++;
       }
+      // Restore the on-screen item's tags so the active set matches the view again
+      if (restoreKey) setActiveItemTags(restoreKey);
 
       // Build method summary for toast
       const methodSummary = Object.entries(methodCounts).map(([m,c]) => m + ': ' + c).join(', ');
@@ -3209,6 +3267,8 @@ function getDashboardRows() {
 // ============================================================
 function renderDashboard() {
   try {
+    // Load this item's tags before anything reads excludedMonths/promoMonths
+    syncActiveTags();
     // Grid always uses the filter-bar filters (ignores selectedSku)
     const gridRows = getDashboardRows();
 
