@@ -4811,6 +4811,62 @@ function attrDrill(name) {
 // ============================================================
 // EXPORT
 // ============================================================
+// Append rows for forecast months that have a saved stat forecast but no upload line
+// (the upload sometimes skips months, e.g. where the forecast was 0), then sort.
+function finalizeExportRows(rows, sourceRows, skuForecastMap, overrides, methodLabel, customerFilter, productFilter) {
+  // One sample row per SKU to copy product attributes from
+  const sampleByKey = new Map();
+  for (const r of sourceRows) {
+    const k = r.customerName + '|' + r.productNumber;
+    if (!sampleByKey.has(k)) sampleByKey.set(k, r);
+  }
+  // Months already present per SKU
+  const presentByKey = new Map();
+  for (const row of rows) {
+    const k = row.CUSTOMER_NAME + '|' + row.PRODUCTNUMBER;
+    if (!presentByKey.has(k)) presentByKey.set(k, new Set());
+    presentByKey.get(k).add(row.YEAR + '-' + String(row.MONTH_NUMBER_OF_YEAR).padStart(2, '0') + '-15');
+  }
+
+  for (const [fcKey, results] of Object.entries(skuForecastMap)) {
+    const sep = fcKey.indexOf('|');
+    const customer = fcKey.slice(0, sep), product = fcKey.slice(sep + 1);
+    if (customerFilter && customer !== customerFilter) continue;
+    if (productFilter && product !== productFilter) continue;
+    const sample = sampleByKey.get(fcKey);
+    if (!sample) continue; // no attributes to copy — SKU has no upload rows at all
+    const present = presentByKey.get(fcKey) || new Set();
+    for (const f of results) {
+      if (present.has(f.month)) continue;
+      present.add(f.month);
+      const ov = overrides[fcKey + '|' + f.month];
+      const updatedForecast = ov ?? f.statValue ?? null;
+      const parts = f.month.split('-');
+      const row = {
+        CUSTOMER_NAME: sample.customerName, BRAND: sample.brand, TYPE: sample.type, FORMATION: sample.formation,
+        'ASSORTMENT LOG STATUS': sample.assortmentLogStatus, MERCHANDISING: sample.merchandising,
+        PRODUCTNAME: sample.productName, PRODUCTNUMBER: sample.productNumber,
+        YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
+        'POS_CASES': null, 'INVOICE_CASES': null, 'ORDER_CASES': null, FORECAST: null,
+        'CUSTOMER_POS_PROJECTION_CASES': null,
+        MAX_WKS_PER_MONTH: state.weeksPerMonthConfig[parseInt(parts[1]) - 1],
+        'UPDATED FORECAST': updatedForecast,
+        'METHOD': updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null,
+      };
+      rows.push(row);
+    }
+  }
+
+  // Sort by customer, product, then chronological month
+  rows.sort((a, b) =>
+    String(a.CUSTOMER_NAME || '').localeCompare(String(b.CUSTOMER_NAME || '')) ||
+    String(a.PRODUCTNUMBER || '').localeCompare(String(b.PRODUCTNUMBER || '')) ||
+    (a.YEAR - b.YEAR) ||
+    (a.MONTH_NUMBER_OF_YEAR - b.MONTH_NUMBER_OF_YEAR)
+  );
+  return rows;
+}
+
 // Builds export rows mirroring the upload file format + UPDATED FORECAST + METHOD columns
 function buildExportRows(customerFilter, productFilter, skuForecastMap, overrides) {
   const params = getConfigParams();
@@ -4842,7 +4898,7 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       if (r.forecast != null) { agg.forecast += r.forecast; agg._hasFcst = true; }
       if (r.customerPosProjection != null) { agg.customerPosProjection += r.customerPosProjection; agg._hasProj = true; }
     }
-    return [...monthMap.values()].map(r => {
+    const rows = [...monthMap.values()].map(r => {
       const fcKey = r.customerName + '|' + r.productNumber;
       const skuResults = skuForecastMap[fcKey] || [];
       const statMap = new Map(skuResults.map(f => [f.month, f.statValue]));
@@ -4868,10 +4924,11 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
       row['METHOD'] = updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null;
       return row;
     });
+    return finalizeExportRows(rows, sourceRows, skuForecastMap, overrides, methodLabel, customerFilter, productFilter);
   }
 
   // Monthly data — direct mapping
-  return sourceRows.map(r => {
+  const monthlyRows = sourceRows.map(r => {
     const fcKey = r.customerName + '|' + r.productNumber;
     const skuResults = skuForecastMap[fcKey] || [];
     const statMap = new Map(skuResults.map(f => [f.month, f.statValue]));
@@ -4895,6 +4952,7 @@ function buildExportRows(customerFilter, productFilter, skuForecastMap, override
     row['METHOD'] = updatedForecast != null ? (ov != null ? 'Override' : methodLabel) : null;
     return row;
   });
+  return finalizeExportRows(monthlyRows, sourceRows, skuForecastMap, overrides, methodLabel, customerFilter, productFilter);
 }
 
 // Builds weekly-level export rows — keeps week granularity, disaggregates forecast to weeks
