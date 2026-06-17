@@ -824,8 +824,8 @@
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Sell-Through (ST%)</div>
-            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Sell-through measures how much of the on-shelf inventory sells each period: <strong>ST% = POS Cases ÷ On-Hand Available</strong>. It appears per week in the weekly table and per month in the Sell-Through section. Set <strong>Min Weekly ST%</strong> / <strong>Min Monthly ST%</strong> to flag (red) any period selling through below your target — low ST% signals overstock relative to demand. The weekly chart's <strong>month exclude chips</strong> let you drop the launch load-in months so the chart autoscales to steady-state trends.</div>
-            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">Weekly ST% = Weekly POS Cases / On-Hand Available  ·  Monthly ST% = Σ POS / Σ Available</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Sell-through measures how much of the on-shelf inventory sells each period: <strong>ST% = POS Cases ÷ On-Hand Available</strong>. A high ST% means you're selling through most of your stock — stockout risk. It appears per week in the weekly table and per month in the Sell-Through section. <strong>Max Weekly ST%</strong> is an active ordering guardrail: when set, the model looks ahead through the lead time and floors inventory at <em>peak demand ÷ max ST%</em>, pre-building stock so no week is forecast to sell more than that share of on-hand — a last-resort stop-gap for demand spikes (e.g. a promotion week pushing ST% toward 60%). It is applied after the WOS and minimum-presentation logic, only raising orders when needed. <strong>Max Monthly ST%</strong> flags (red ⚠) months whose aggregate ST% exceeds the ceiling. The weekly chart's <strong>month exclude chips</strong> drop the launch load-in so the chart autoscales to steady-state trends.</div>
+            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">ST% = Weekly POS Cases / On-Hand Available  ·  Max-ST floor: On-Hand ≥ Peak Demand / Max ST%</div>
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Assumptions (round-trip)</div>
@@ -987,11 +987,11 @@
           <div class="flex justify-between items-center mb-3" style="flex-wrap:wrap; gap:8px;">
             <h2 class="text-lg font-semibold" style="color:#111827;">Sell-Through (ST% = POS Cases / On-Hand)</h2>
             <div class="flex gap-3 items-end">
-              <div><label class="label">Min Weekly ST%</label><input type="number" id="nc-min-st-week" value="0" min="0" max="100" class="select-field select-sm" style="width:90px;" onchange="ncRenderResults()"></div>
-              <div><label class="label">Min Monthly ST%</label><input type="number" id="nc-min-st-month" value="0" min="0" max="100" class="select-field select-sm" style="width:90px;" onchange="ncRenderResults()"></div>
+              <div><label class="label">Max Weekly ST%</label><input type="number" id="nc-max-st-week" value="0" min="0" max="100" class="select-field select-sm" style="width:90px;" onchange="runNcSimulation()"></div>
+              <div><label class="label">Max Monthly ST%</label><input type="number" id="nc-max-st-month" value="0" min="0" max="100" class="select-field select-sm" style="width:90px;" onchange="ncRenderResults()"></div>
             </div>
           </div>
-          <p class="text-xs text-gray-500 mb-3">Weekly ST% appears in the table above. Months below the minimum are flagged red. Set 0 to disable flagging.</p>
+          <p class="text-xs text-gray-500 mb-3"><strong>Max Weekly ST%</strong> caps planned sell-through: the model pre-builds inventory (through the lead time) so no week is forecast to sell more than this share of on-hand — a last-resort stop-gap against stockouts on demand spikes (e.g. a promo week). Changing it re-runs the simulation. <strong>Max Monthly ST%</strong> flags (red ⚠) any month whose aggregate ST% exceeds it. Set 0 to disable.</p>
           <div style="overflow-x:auto;">
             <table class="data-grid" id="nc-st-table"></table>
           </div>
@@ -5691,8 +5691,8 @@ const NC_SCENARIO_COLS = {
   'START_VELOCITY_PCT':'rampStartPct','START_VELOCITY':'rampStartPct',
   'BASE_RAMP_WEEKS':'rampBaseWeeks',
   'ROUND_ORDERS_TO':'roundMode','ROUND_MODE':'roundMode',
-  'MIN_WEEKLY_ST_PCT':'minStWeek','MIN_WEEKLY_ST':'minStWeek',
-  'MIN_MONTHLY_ST_PCT':'minStMonth','MIN_MONTHLY_ST':'minStMonth',
+  'MAX_WEEKLY_ST_PCT':'maxStWeek','MAX_WEEKLY_ST':'maxStWeek',
+  'MAX_MONTHLY_ST_PCT':'maxStMonth','MAX_MONTHLY_ST':'maxStMonth',
 };
 
 // Convert an Excel cell (string ISO date or numeric serial) to a YYYY-MM-DD string.
@@ -5749,8 +5749,8 @@ function ncApplyScenario(sc) {
   set('nc-ramp-start-pct', sc.rampStartPct);
   set('nc-ramp-base-weeks', sc.rampBaseWeeks);
   if (sc.roundMode) document.getElementById('nc-round-mode').value = sc.roundMode;
-  set('nc-min-st-week', sc.minStWeek);
-  set('nc-min-st-month', sc.minStMonth);
+  set('nc-max-st-week', sc.maxStWeek);
+  set('nc-max-st-month', sc.maxStMonth);
   ncRenderConfig();
 }
 
@@ -5999,6 +5999,8 @@ function runNcSimulation() {
   const leadTime = Math.max(0, parseInt(document.getElementById('nc-leadtime').value) || 0);
   const defaultWos = Math.max(1, ncToNum(document.getElementById('nc-target-wos').value) || 4);
   const roundMode = document.getElementById('nc-round-mode').value; // 'case' | 'layer'
+  // Max weekly sell-through ceiling (0 = off). Caps planned ST% by flooring inventory at demand/maxST.
+  const maxStWeek = Math.max(0, Math.min(100, ncToNum(document.getElementById('nc-max-st-week').value) || 0)) / 100;
 
   // Velocity ramp config
   const rampOn = document.getElementById('nc-ramp-enabled').checked;
@@ -6065,6 +6067,17 @@ function runNcSimulation() {
         }
         // Minimum presentation floor: keep at least min shelf units' worth of cases positioned
         if (minPresCases > 0) target = Math.max(target, minPresCases);
+        // Max sell-through stop-gap: ensure inventory covers the PEAK demand over the lead-time
+        // window divided by the ceiling, so no upcoming week is planned to sell more than maxST%
+        // of on-hand (e.g. pre-build for a promo spike). Last-resort floor, applied after WOS.
+        if (maxStWeek > 0) {
+          let peakDemand = 0;
+          for (let j = 0; j <= leadTime + 1; j++) {
+            const dw = fullWeeklyPosCases * (rampOn ? ncRampMultiplier(w - launchWeek + j, rampWeeks, rampStartPct) : 1);
+            if (dw > peakDemand) peakDemand = dw;
+          }
+          if (peakDemand > 0) target = Math.max(target, peakDemand / maxStWeek);
+        }
         const need = target - (onHand + onOrder);
         if (need > 0) {
           const replen = roundUpToIncrement(need, orderInc);
@@ -6178,7 +6191,7 @@ function ncToggleExcludeMonth(mk) {
 // Sell-Through summary: monthly ST% = total POS cases / total on-hand available across the month.
 function ncRenderStTable() {
   const sim = state.newCustomer.sim;
-  const minMonthSt = (ncToNum(document.getElementById('nc-min-st-month').value) || 0) / 100;
+  const maxMonthSt = (ncToNum(document.getElementById('nc-max-st-month').value) || 0) / 100;
   const agg = new Map(); // monthKey => { pos, avail }
   for (const sku of sim.perSku) {
     for (const wk of sku.weeks) {
@@ -6191,7 +6204,7 @@ function ncRenderStTable() {
   for (const mk of sim.months) {
     const m = agg.get(mk) || { pos: 0, avail: 0 };
     const st = m.avail > 0 ? m.pos / m.avail : null;
-    const low = minMonthSt > 0 && st != null && st < minMonthSt;
+    const low = maxMonthSt > 0 && st != null && st > maxMonthSt;
     html += '<tr><td>' + fmtMonth(mk) + '</td>' +
       '<td style="text-align:right;">' + ncFmt(Math.round(m.pos)) + '</td>' +
       '<td style="text-align:right;">' + ncFmt(Math.round(m.avail)) + '</td>' +
@@ -6237,7 +6250,7 @@ function ncRenderWeeklyGrid() {
   const sel = document.getElementById('nc-week-sku');
   const key = sel.value || '__ALL__';
   const sku = (key === '__ALL__') ? ncAggregateWeeks() : (sim.perSku.find(s => s.key === key) || sim.perSku[0]);
-  const minWeekSt = (ncToNum(document.getElementById('nc-min-st-week').value) || 0) / 100;
+  const maxWeekSt = (ncToNum(document.getElementById('nc-max-st-week').value) || 0) / 100;
   const excluded = state.newCustomer.excludedMonths;
   let html = '<thead><tr><th>Wk</th><th>Week Of</th><th>Month</th>' +
     '<th style="text-align:right;">POS Units</th><th style="text-align:right;">POS Cases</th>' +
@@ -6245,7 +6258,7 @@ function ncRenderWeeklyGrid() {
     '<th style="text-align:right;">On Hand</th><th style="text-align:right;">ST%</th><th style="text-align:right;">WOS</th></tr></thead><tbody>';
   for (const wk of sku.weeks) {
     const isExcl = excluded.has(wk.monthKey);
-    const stLow = minWeekSt > 0 && wk.stPct != null && wk.stPct < minWeekSt;
+    const stLow = maxWeekSt > 0 && wk.stPct != null && wk.stPct > maxWeekSt;
     html += '<tr' + (isExcl ? ' style="opacity:0.4;"' : '') + '>' +
       '<td>' + wk.w + '</td>' +
       '<td>' + wk.date + '</td>' +
@@ -6387,8 +6400,8 @@ function exportNewCustomerAssumptions() {
       { SETTING: 'START_VELOCITY_PCT', VALUE: g('nc-ramp-start-pct').value },
       { SETTING: 'BASE_RAMP_WEEKS', VALUE: g('nc-ramp-base-weeks').value },
       { SETTING: 'ROUND_ORDERS_TO', VALUE: g('nc-round-mode').value },
-      { SETTING: 'MIN_WEEKLY_ST_PCT', VALUE: g('nc-min-st-week').value },
-      { SETTING: 'MIN_MONTHLY_ST_PCT', VALUE: g('nc-min-st-month').value },
+      { SETTING: 'MAX_WEEKLY_ST_PCT', VALUE: g('nc-max-st-week').value },
+      { SETTING: 'MAX_MONTHLY_ST_PCT', VALUE: g('nc-max-st-month').value },
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scenarioRows), 'Scenario');
 
