@@ -514,6 +514,7 @@
               <button onclick="runForecast()" class="w-full py-2 btn-primary text-sm">Recalculate</button>
               <button id="save-forecast-btn" onclick="saveForecast()" class="w-full py-2 btn-green text-sm hidden">Save Forecast</button>
               <button onclick="zeroOutForecasts()" class="w-full py-2 btn-secondary text-sm" style="color:#dc2626; border-color:#fca5a5;">Zero Out Forecasts</button>
+              <button onclick="revertToExisting()" class="w-full py-2 btn-secondary text-sm" style="color:#b45309; border-color:#fcd34d;">Revert to Existing Forecast</button>
             </div>
             <div id="best-method-result" class="hidden"></div>
 
@@ -2453,6 +2454,43 @@ function zeroOutForecasts() {
   invalidateCache();
   renderDashboard();
   showToast('Forecasts zeroed out (' + futureMonths.length + ' months) — logged as manual override at ' + timestamp, 'success');
+}
+
+// Clears the saved/statistical forecast for the products currently in view so the
+// grid and export fall back to the existing forecast (the uploaded FORECAST column).
+function revertToExisting() {
+  const filtered = getFilteredRows();
+  if (!filtered.length) { showToast('No products in the current filter', 'error'); return; }
+
+  // Keys to clear: every SKU combo in view, plus the aggregate filter key that
+  // Recalculate / Zero Out write to.
+  const keys = new Set(filtered.map(r => r.customerName + '|' + r.productNumber));
+  const fcKey = (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
+  keys.add(fcKey);
+
+  let cleared = 0;
+  for (const key of keys) {
+    if (state.skuForecasts[key]) cleared++;
+    delete state.skuForecasts[key];
+    delete state.forecastResults[key];
+    delete state.previewResults[key];
+    const prefix = key + '|';
+    for (const k of Object.keys(state.overrides)) {
+      if (k.startsWith(prefix)) delete state.overrides[k];
+    }
+  }
+
+  // Drop any zero-out log entries for the reverted scope so attribution stays accurate
+  if (state.zeroOutLog) state.zeroOutLog = state.zeroOutLog.filter(e => !keys.has(e.key));
+
+  document.getElementById('save-forecast-btn').classList.add('hidden');
+  const gapSection = document.getElementById('forecast-gap-section');
+  if (gapSection) gapSection.classList.add('hidden');
+
+  renderSavedPanel();
+  invalidateCache();
+  renderDashboard();
+  showToast('Reverted to existing forecast (' + cleared + ' saved ' + (cleared === 1 ? 'forecast' : 'forecasts') + ' cleared)', 'success');
 }
 
 // ============================================================
