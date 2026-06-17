@@ -295,6 +295,9 @@
           <span class="text-xs text-gray-400">|</span>
           <button onclick="loadDemoWeekly()" style="background:none; font-size:14px;" class="ml-2 text-blue-600 underline">Weekly</button>
         </div>
+        <div class="mt-3 text-center">
+          <button onclick="showNewCustomerView()" style="background:none; font-size:14px;" class="text-blue-600 underline">Build a new customer launch forecast &rarr;</button>
+        </div>
 
         <div id="upload-result" class="mt-6 card p-6 hidden" style="background:#f0fdf4; border-color:#bbf7d0;">
           <h3 class="font-semibold text-green-800 mb-3">File Processed Successfully</h3>
@@ -318,6 +321,7 @@
           <span class="text-lg font-semibold">Sales Forecast</span>
           <div class="page-toggle">
             <button class="active" onclick="showForecastView()">Forecast</button>
+            <button onclick="showNewCustomerView()">New Customer</button>
             <button onclick="showDefinitionsView()">Definitions</button>
           </div>
           <span class="text-sm text-gray-500 ml-2" id="file-info"></span>
@@ -658,6 +662,7 @@
           <span class="text-lg font-semibold">Sales Forecast</span>
           <div class="page-toggle">
             <button onclick="showForecastView()">Forecast</button>
+            <button onclick="showNewCustomerView()">New Customer</button>
             <button class="active" onclick="showDefinitionsView()">Definitions</button>
           </div>
         </div>
@@ -784,6 +789,155 @@
           </div>
         </div>
       </div>
+
+      <!-- New Customer Builder -->
+      <div class="card p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-4" style="color:#111827;">New Customer Forecast Builder</h2>
+        <p style="font-size:13px; color:#4b5563; line-height:1.6; margin-bottom:12px;">For a customer with no sales history, the <strong>New Customer</strong> tab builds a bottom-up launch forecast from store counts and rate-of-sale, then simulates weekly inventory and replenishment to project shipments. Everything runs in the browser; nothing is saved.</p>
+        <div style="display:grid; gap:12px;">
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">SKU Master &amp; Assumptions</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Upload a SKU list (only <strong>PRODUCTNUMBER</strong> is required). Each SKU carries editable assumptions: <strong>Case Pack</strong> (units per case), <strong>Stores</strong> (distribution doors), <strong>Velocity</strong> (units sold per store per week), <strong>Order Increment</strong> (case multiple each order rounds up to), <strong>Initial Shipment</strong> (launch sell-in cases), <strong>Launch Week</strong>, and an optional per-SKU <strong>Target WOS</strong> override.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Weekly POS</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Consumer demand each week is Stores × Velocity (units), converted to cases by dividing by Case Pack. POS begins in the SKU's launch week.</div>
+            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">Weekly POS Cases = (Stores × Velocity) / Case Pack</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Replenishment: Weeks-of-Supply + Lead Time</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Each week the model orders enough to cover <strong>Target WOS + Lead Time</strong> weeks of demand, less what is already on hand or in transit. Orders arrive after the lead time. This builds a pipeline at launch and then tracks demand. Order quantities are rounded up to the case Order Increment (pack-size rounding).</div>
+            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">Order = roundUp( (TargetWOS + LeadTime) × WeeklyDemand − OnHand − OnOrder , Increment )</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Replenishment: POS-Fill</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">A simpler 1:1 mode — each week replaces exactly what sold through (rounded up to the Order Increment). Inventory stays lean; useful for steady-state sell-through rather than pipeline building.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export &amp; Apply to Engine</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Weekly shipments and POS roll up to calendar months. <strong>Export Excel</strong> produces a re-uploadable monthly projection plus a weekly-detail sheet. <strong>Apply to Forecast Engine</strong> adds the customer to the main Forecast tab, with the monthly order projection saved as its forecast and the monthly POS projection stored as the customer POS projection — letting the new customer flow through the same grid, overrides, and exports as historical customers. Re-applying replaces the prior run.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== NEW CUSTOMER VIEW ===== -->
+  <div id="new-customer-view" class="min-h-screen hidden">
+    <nav class="nav">
+      <div class="nav-inner justify-between" style="max-width:1600px; margin:0 auto; padding:0 16px;">
+        <div class="flex items-center">
+          <span class="text-lg font-semibold">Sales Forecast</span>
+          <div class="page-toggle">
+            <button onclick="showForecastView()">Forecast</button>
+            <button class="active" onclick="showNewCustomerView()">New Customer</button>
+            <button onclick="showDefinitionsView()">Definitions</button>
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <button onclick="showUpload()" class="px-4 py-2 btn-outline">New Upload</button>
+        </div>
+      </div>
+    </nav>
+
+    <div class="container py-6" style="max-width:1400px;">
+      <h1 class="text-2xl font-bold mb-1" style="color:#111827;">New Customer Forecast Builder</h1>
+      <p class="text-sm text-gray-500 mb-6">Build a bottom-up launch forecast from store counts and velocity, simulate weekly inventory &amp; replenishment, then export or feed monthly projections into the main engine. Everything runs in your browser — nothing is saved.</p>
+
+      <!-- Step 1: SKU Master upload -->
+      <div class="card p-6 mb-6">
+        <h2 class="text-lg font-semibold mb-1" style="color:#111827;">1. SKU Master</h2>
+        <p class="text-xs text-gray-500 mb-3">Upload a SKU list for the new customer. Required column: <span class="col-tag">PRODUCTNUMBER</span>. Optional: <span class="col-tag">PRODUCTNAME</span> <span class="col-tag">BRAND</span> <span class="col-tag">TYPE</span> <span class="col-tag">FORMATION</span> <span class="col-tag">CASE_PACK</span> <span class="col-tag">STORES</span> <span class="col-tag">VELOCITY</span> <span class="col-tag">ORDER_INCREMENT</span> <span class="col-tag">INITIAL_SHIPMENT_CASES</span> <span class="col-tag">LAUNCH_WEEK</span> <span class="col-tag">TARGET_WOS</span></p>
+        <div class="flex gap-4 items-end flex-wrap">
+          <div>
+            <label class="label">New Customer Name</label>
+            <input type="text" id="nc-customer-name" placeholder="e.g. Target" class="select-field" style="width:220px;">
+          </div>
+          <div>
+            <label class="label">SKU Master File</label>
+            <div id="nc-drop-zone" class="drop-zone" style="padding:14px 24px; min-width:260px;">
+              <p id="nc-drop-text" class="text-gray-600 text-sm">Drop .xlsx/.csv or click</p>
+              <input type="file" id="nc-file-input" accept=".xlsx,.csv" class="hidden">
+            </div>
+          </div>
+          <button onclick="loadNcDemo()" class="px-3 py-2 btn-secondary" style="font-size:13px;">Load Demo SKUs</button>
+          <span id="nc-sku-status" class="text-sm text-gray-500"></span>
+        </div>
+        <div id="nc-upload-error" class="mt-3 text-sm text-red-700 hidden"></div>
+      </div>
+
+      <!-- Step 2: Scenario config + assumptions (hidden until SKUs loaded) -->
+      <div id="nc-config-section" class="hidden">
+        <div class="card p-6 mb-6">
+          <h2 class="text-lg font-semibold mb-3" style="color:#111827;">2. Scenario Assumptions</h2>
+          <div class="flex flex-wrap gap-4 items-end mb-2">
+            <div>
+              <label class="label">Launch / First Ship Date</label>
+              <input type="date" id="nc-start-date" class="select-field" style="width:160px;">
+            </div>
+            <div>
+              <label class="label">Horizon (weeks)</label>
+              <input type="number" id="nc-horizon" value="26" min="4" max="104" class="select-field" style="width:90px;">
+            </div>
+            <div>
+              <label class="label">Replenishment Mode</label>
+              <select id="nc-mode" class="select-field" style="width:220px;" onchange="ncRenderConfig()">
+                <option value="wos">Weeks-of-Supply + Lead Time</option>
+                <option value="pos_fill">POS-Fill (1:1 sell-through)</option>
+              </select>
+            </div>
+            <div id="nc-leadtime-wrap">
+              <label class="label">Lead Time (weeks)</label>
+              <input type="number" id="nc-leadtime" value="2" min="0" max="26" class="select-field" style="width:90px;">
+            </div>
+            <div id="nc-wos-wrap">
+              <label class="label">Target Weeks of Supply</label>
+              <input type="number" id="nc-target-wos" value="4" min="1" max="52" class="select-field" style="width:120px;">
+            </div>
+          </div>
+          <p class="text-xs text-gray-400">Per-SKU values below override these defaults. Velocity = units sold per store per week. Case Pack = units per case. Order Increment = case multiple each replenishment is rounded up to.</p>
+        </div>
+
+        <div class="card p-6 mb-6">
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-lg font-semibold" style="color:#111827;">Per-SKU Assumptions</h2>
+            <div class="flex gap-2">
+              <button onclick="ncApplyDefaultsToAll()" class="px-3 py-1.5 btn-secondary" style="font-size:12px;">Apply Scenario Defaults to All</button>
+              <button onclick="runNcSimulation()" class="px-4 py-1.5 btn-primary" style="font-size:13px;">Run Simulation</button>
+            </div>
+          </div>
+          <div style="overflow-x:auto; max-height:380px; overflow-y:auto;">
+            <table class="data-grid" id="nc-sku-table"></table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Results (hidden until simulation runs) -->
+      <div id="nc-results-section" class="hidden">
+        <div class="card p-6 mb-6">
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-lg font-semibold" style="color:#111827;">3. Monthly Projection Preview</h2>
+            <div class="flex gap-2">
+              <button onclick="exportNewCustomerForecast()" class="px-4 py-2 btn-outline" style="font-size:13px;">Export Excel</button>
+              <button onclick="applyNewCustomerToEngine()" class="px-4 py-2 btn-green" style="font-size:13px;">Apply to Forecast Engine</button>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mb-3">Weekly shipments and POS aggregated to calendar months. "Apply to Forecast Engine" adds this customer to the main Forecast tab with these monthly order projections as its saved forecast.</p>
+          <div style="overflow-x:auto;">
+            <table class="data-grid" id="nc-monthly-table"></table>
+          </div>
+        </div>
+
+        <div class="card p-6 mb-6">
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="text-lg font-semibold" style="color:#111827;">Weekly Simulation Detail</h2>
+            <select id="nc-week-sku" class="select-field" style="width:280px;" onchange="ncRenderWeeklyGrid()"></select>
+          </div>
+          <div style="overflow-x:auto; max-height:460px; overflow-y:auto;">
+            <table class="data-grid" id="nc-weekly-table"></table>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -817,6 +971,13 @@ const state = {
   weeksMap: {},          // month string => maxWksPerMonth value from upload
   selectedSku: null,     // {customer, product} — top items highlight/drill, doesn't affect grid
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
+  // New Customer launch-forecast builder (self-contained, no persistence)
+  newCustomer: {
+    customerName: '',
+    skus: [],        // [{ productNumber, productName, brand, type, formation, casePack, stores, velocity, orderIncrement, initialCases, launchWeek, targetWos }]
+    sim: null,       // { perSku: [{ key, productNumber, productName, weeks:[...] }], months: [...] }
+    _initialized: false,
+  },
 };
 let chart = null;
 
@@ -1602,28 +1763,38 @@ function detectSeasonality(values) {
 // ============================================================
 // VIEW MANAGEMENT
 // ============================================================
+const ALL_VIEW_IDS = ['upload-view', 'dashboard-view', 'definitions-view', 'new-customer-view'];
+function hideAllViews() {
+  for (const id of ALL_VIEW_IDS) document.getElementById(id).classList.add('hidden');
+}
+function setActiveToggle(label) {
+  document.querySelectorAll('.page-toggle button').forEach(b => b.classList.toggle('active', b.textContent === label));
+}
+
 function showUpload() {
+  hideAllViews();
   document.getElementById('upload-view').classList.remove('hidden');
-  document.getElementById('dashboard-view').classList.add('hidden');
-  document.getElementById('definitions-view').classList.add('hidden');
 }
 
 function showForecastView() {
-  document.getElementById('upload-view').classList.add('hidden');
-  document.getElementById('definitions-view').classList.add('hidden');
+  hideAllViews();
   document.getElementById('dashboard-view').classList.remove('hidden');
-  document.querySelectorAll('.page-toggle button').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.page-toggle button').forEach(b => { if (b.textContent === 'Forecast') b.classList.add('active'); });
+  setActiveToggle('Forecast');
 }
 
 function showAnalyticsView() { showForecastView(); }
 
 function showDefinitionsView() {
-  document.getElementById('upload-view').classList.add('hidden');
-  document.getElementById('dashboard-view').classList.add('hidden');
+  hideAllViews();
   document.getElementById('definitions-view').classList.remove('hidden');
-  document.querySelectorAll('.page-toggle button').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.page-toggle button').forEach(b => { if (b.textContent === 'Definitions') b.classList.add('active'); });
+  setActiveToggle('Definitions');
+}
+
+function showNewCustomerView() {
+  hideAllViews();
+  document.getElementById('new-customer-view').classList.remove('hidden');
+  setActiveToggle('New Customer');
+  ncInit();
 }
 
 function setViewMode(mode) {
@@ -1651,9 +1822,9 @@ function fmtTimeKey(key) {
   return d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
 }
 function showDashboard() {
-  document.getElementById('upload-view').classList.add('hidden');
-  document.getElementById('definitions-view').classList.add('hidden');
+  hideAllViews();
   document.getElementById('dashboard-view').classList.remove('hidden');
+  setActiveToggle('Forecast');
   document.getElementById('file-info').textContent = state.fileName || '';
   populateFilters();
   // Show week/month toggle only for weekly data
@@ -5358,6 +5529,505 @@ function loadDemoWeekly() {
       showDashboard();
     } catch (e) { hideLoading(); showToast('Demo data error: ' + e.message, 'error'); }
   });
+}
+
+// ============================================================
+// NEW CUSTOMER — launch forecast builder (self-contained)
+// ============================================================
+const NC_SKU_COLS = {
+  'PRODUCTNUMBER':'productNumber','PRODUCT_NUMBER':'productNumber','SKU':'productNumber','ITEM':'productNumber',
+  'PRODUCTNAME':'productName','PRODUCT_NAME':'productName','DESCRIPTION':'productName','NAME':'productName',
+  'BRAND':'brand','TYPE':'type','FORMATION':'formation',
+  'CASE_PACK':'casePack','CASEPACK':'casePack','UNITS_PER_CASE':'casePack','PACK_SIZE':'casePack','PACK':'casePack',
+  'STORES':'stores','STORE_COUNT':'stores','NUM_STORES':'stores','DOORS':'stores',
+  'VELOCITY':'velocity','UNITS_PER_STORE_PER_WEEK':'velocity','UPSPW':'velocity','RATE_OF_SALE':'velocity',
+  'ORDER_INCREMENT':'orderIncrement','CASE_MULTIPLE':'orderIncrement','MOQ_CASES':'orderIncrement',
+  'INITIAL_SHIPMENT_CASES':'initialCases','INITIAL_CASES':'initialCases','SELL_IN_CASES':'initialCases','PIPELINE_CASES':'initialCases',
+  'LAUNCH_WEEK':'launchWeek','START_WEEK':'launchWeek',
+  'TARGET_WOS':'targetWos','WOS':'targetWos','WEEKS_OF_SUPPLY':'targetWos',
+};
+
+function ncToNum(v) { return (v != null && v !== '' && !isNaN(Number(v))) ? Number(v) : null; }
+
+// Parse an uploaded SKU master file into sku assumption objects.
+function parseSkuMasterFile(buffer) {
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const sheet = wb.Sheets[wb.SheetNames[0]];
+  if (!sheet) return { success: false, skus: [], errors: ['No sheets found in file'] };
+  const rawData = XLSX.utils.sheet_to_json(sheet, { defval: null });
+  if (!rawData.length) return { success: false, skus: [], errors: ['Sheet is empty'] };
+
+  const headers = Object.keys(rawData[0]);
+  const normToKey = {};
+  for (const h of headers) { const k = NC_SKU_COLS[normalizeHeader(h)]; if (k) normToKey[h] = k; }
+  if (!Object.values(normToKey).includes('productNumber')) {
+    return { success: false, skus: [], errors: ['Missing required column PRODUCTNUMBER. Found: ' + headers.join(', ')] };
+  }
+
+  const skus = [], errors = [];
+  const seen = new Set();
+  for (let i = 0; i < rawData.length; i++) {
+    const m = {};
+    for (const h of headers) { if (normToKey[h]) m[normToKey[h]] = rawData[i][h]; }
+    const productNumber = String(m.productNumber || '').trim();
+    if (!productNumber) { errors.push('Row ' + (i+2) + ': missing PRODUCTNUMBER'); continue; }
+    if (seen.has(productNumber)) continue; // dedupe
+    seen.add(productNumber);
+    skus.push(ncMakeSku({
+      productNumber,
+      productName: String(m.productName || productNumber).trim(),
+      brand: String(m.brand || '').trim(),
+      type: String(m.type || '').trim(),
+      formation: String(m.formation || '').trim(),
+      casePack: ncToNum(m.casePack),
+      stores: ncToNum(m.stores),
+      velocity: ncToNum(m.velocity),
+      orderIncrement: ncToNum(m.orderIncrement),
+      initialCases: ncToNum(m.initialCases),
+      launchWeek: ncToNum(m.launchWeek),
+      targetWos: ncToNum(m.targetWos),
+    }));
+  }
+  if (!skus.length) return { success: false, skus: [], errors: errors.length ? errors : ['No valid SKU rows found'] };
+  return { success: true, skus, errors };
+}
+
+// Normalize a partial sku into a full assumptions object with sensible defaults.
+function ncMakeSku(p) {
+  return {
+    productNumber: p.productNumber,
+    productName: p.productName || p.productNumber,
+    brand: p.brand || '', type: p.type || '', formation: p.formation || '',
+    casePack: (p.casePack != null && p.casePack > 0) ? p.casePack : 1,
+    stores: p.stores != null ? p.stores : 0,
+    velocity: p.velocity != null ? p.velocity : 0,
+    orderIncrement: (p.orderIncrement != null && p.orderIncrement > 0) ? p.orderIncrement : 1,
+    initialCases: p.initialCases != null ? p.initialCases : 0,
+    launchWeek: (p.launchWeek != null && p.launchWeek >= 1) ? Math.round(p.launchWeek) : 1,
+    targetWos: (p.targetWos != null && p.targetWos > 0) ? p.targetWos : null, // null = use scenario default
+  };
+}
+
+// One-time wiring + default state when the tab opens.
+function ncInit() {
+  const nc = state.newCustomer;
+  if (!nc._initialized) {
+    nc._initialized = true;
+    // Default launch date = next Monday from today
+    const d = new Date();
+    const day = d.getDay();
+    const add = ((8 - day) % 7) || 7; // days until next Monday
+    const monday = new Date(d.getTime() + add * 86400000);
+    document.getElementById('nc-start-date').value = dateStr(monday);
+
+    // Wire SKU-master drop zone
+    const dz = document.getElementById('nc-drop-zone');
+    const fi = document.getElementById('nc-file-input');
+    dz.addEventListener('click', () => fi.click());
+    dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('active'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('active'));
+    dz.addEventListener('drop', e => {
+      e.preventDefault(); dz.classList.remove('active');
+      const f = e.dataTransfer.files[0];
+      if (f) ncHandleFile(f);
+    });
+    fi.addEventListener('change', e => { if (e.target.files[0]) ncHandleFile(e.target.files[0]); });
+  }
+  // Sync customer-name field with state
+  document.getElementById('nc-customer-name').value = nc.customerName || '';
+  ncRenderConfig();
+  if (nc.skus.length) {
+    document.getElementById('nc-config-section').classList.remove('hidden');
+    ncRenderSkuTable();
+  }
+  if (nc.sim) {
+    document.getElementById('nc-results-section').classList.remove('hidden');
+  }
+}
+
+function ncHandleFile(file) {
+  const errEl = document.getElementById('nc-upload-error');
+  errEl.classList.add('hidden');
+  document.getElementById('nc-drop-text').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const result = parseSkuMasterFile(e.target.result);
+      if (!result.success) {
+        errEl.textContent = result.errors.join('; ');
+        errEl.classList.remove('hidden');
+        return;
+      }
+      state.newCustomer.skus = result.skus;
+      document.getElementById('nc-sku-status').textContent = result.skus.length + ' SKUs loaded' +
+        (result.errors.length ? ' (' + result.errors.length + ' rows skipped)' : '');
+      document.getElementById('nc-config-section').classList.remove('hidden');
+      ncRenderSkuTable();
+    } catch (err) {
+      errEl.textContent = 'Could not parse file: ' + err.message;
+      errEl.classList.remove('hidden');
+    }
+  };
+  reader.onerror = function() { errEl.textContent = 'Failed to read file'; errEl.classList.remove('hidden'); };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadNcDemo() {
+  if (!document.getElementById('nc-customer-name').value) {
+    document.getElementById('nc-customer-name').value = 'Target';
+    state.newCustomer.customerName = 'Target';
+  }
+  state.newCustomer.skus = [
+    ncMakeSku({ productNumber:'CDF-001', productName:'Premium Canine Dry Kibble 30lb', brand:'Canine', type:'Dry Food', formation:'Kibble', casePack:1, stores:1800, velocity:0.8, orderIncrement:1, initialCases:1200, launchWeek:1 }),
+    ncMakeSku({ productNumber:'CWF-001', productName:'Canine Gourmet Wet Pate 12pk', brand:'Canine', type:'Wet Food', formation:'Pate', casePack:12, stores:1800, velocity:6, orderIncrement:5, initialCases:900, launchWeek:1 }),
+    ncMakeSku({ productNumber:'FDF-001', productName:'Feline Indoor Dry Kibble 12lb', brand:'Feline', type:'Dry Food', formation:'Kibble', casePack:1, stores:1500, velocity:0.6, orderIncrement:1, initialCases:700, launchWeek:2 }),
+    ncMakeSku({ productNumber:'FWF-001', productName:'Feline Select Wet Pate 12pk', brand:'Feline', type:'Wet Food', formation:'Pate', casePack:12, stores:1500, velocity:5, orderIncrement:5, initialCases:600, launchWeek:2 }),
+  ];
+  document.getElementById('nc-sku-status').textContent = state.newCustomer.skus.length + ' demo SKUs loaded';
+  document.getElementById('nc-config-section').classList.remove('hidden');
+  ncRenderSkuTable();
+}
+
+// Show/hide WOS field depending on replenishment mode.
+function ncRenderConfig() {
+  const mode = document.getElementById('nc-mode').value;
+  document.getElementById('nc-wos-wrap').style.display = (mode === 'wos') ? '' : 'none';
+}
+
+function ncRenderSkuTable() {
+  const skus = state.newCustomer.skus;
+  const inp = (i, field, val, step) => '<input type="number" step="' + (step||'any') + '" min="0" value="' + (val != null ? val : '') + '" oninput="ncUpdateSku(' + i + ',\'' + field + '\',this.value)">';
+  let html = '<thead><tr>' +
+    '<th>Product #</th><th>Name</th><th>Case Pack</th><th>Stores</th><th>Velocity (u/store/wk)</th>' +
+    '<th>Order Incr (cases)</th><th>Initial Ship (cases)</th><th>Launch Wk</th><th>Target WOS</th>' +
+    '</tr></thead><tbody>';
+  skus.forEach((s, i) => {
+    html += '<tr>' +
+      '<td style="font-weight:600;">' + sanitize(s.productNumber) + '</td>' +
+      '<td style="max-width:220px; overflow:hidden; text-overflow:ellipsis;">' + sanitize(s.productName) + '</td>' +
+      '<td>' + inp(i, 'casePack', s.casePack, '1') + '</td>' +
+      '<td>' + inp(i, 'stores', s.stores, '1') + '</td>' +
+      '<td>' + inp(i, 'velocity', s.velocity) + '</td>' +
+      '<td>' + inp(i, 'orderIncrement', s.orderIncrement, '1') + '</td>' +
+      '<td>' + inp(i, 'initialCases', s.initialCases, '1') + '</td>' +
+      '<td>' + inp(i, 'launchWeek', s.launchWeek, '1') + '</td>' +
+      '<td><input type="number" step="any" min="0" placeholder="default" value="' + (s.targetWos != null ? s.targetWos : '') + '" oninput="ncUpdateSku(' + i + ',\'targetWos\',this.value)"></td>' +
+      '</tr>';
+  });
+  html += '</tbody>';
+  document.getElementById('nc-sku-table').innerHTML = html;
+}
+
+function ncUpdateSku(i, field, value) {
+  const s = state.newCustomer.skus[i];
+  if (!s) return;
+  if (value === '' || value == null) {
+    s[field] = (field === 'targetWos') ? null : 0;
+  } else {
+    s[field] = Number(value);
+  }
+}
+
+// Set every SKU's Target WOS to the scenario default (materializes the blank "default" cells).
+function ncApplyDefaultsToAll() {
+  const wos = ncToNum(document.getElementById('nc-target-wos').value) || 4;
+  state.newCustomer.skus.forEach(s => { s.targetWos = wos; });
+  ncRenderSkuTable();
+  showToast('Set Target WOS = ' + wos + ' on all SKUs', 'success');
+}
+
+// Round a (possibly fractional) case quantity up to the nearest order increment.
+function roundUpToIncrement(value, increment) {
+  if (value <= 0) return 0;
+  if (!increment || increment <= 0) return Math.ceil(value);
+  return Math.ceil(value / increment) * increment;
+}
+
+function ncMonthKeyFromDate(d) {
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-15';
+}
+
+// Weekly inventory + replenishment simulation across all SKUs.
+function runNcSimulation() {
+  const nc = state.newCustomer;
+  nc.customerName = (document.getElementById('nc-customer-name').value || '').trim();
+  if (!nc.customerName) { showToast('Enter a customer name first', 'error'); return; }
+  if (!nc.skus.length) { showToast('Load a SKU master first', 'error'); return; }
+
+  const startVal = document.getElementById('nc-start-date').value;
+  if (!startVal) { showToast('Set a launch date', 'error'); return; }
+  const startDate = new Date(startVal + 'T00:00:00');
+  const horizon = Math.max(4, Math.min(104, parseInt(document.getElementById('nc-horizon').value) || 26));
+  const mode = document.getElementById('nc-mode').value;
+  const leadTime = Math.max(0, parseInt(document.getElementById('nc-leadtime').value) || 0);
+  const defaultWos = Math.max(1, ncToNum(document.getElementById('nc-target-wos').value) || 4);
+
+  const perSku = [];
+  for (const s of nc.skus) {
+    const casePack = s.casePack > 0 ? s.casePack : 1;
+    const weeklyPosUnits = (s.stores || 0) * (s.velocity || 0);
+    const weeklyPosCases = weeklyPosUnits / casePack;
+    const targetWos = (s.targetWos != null && s.targetWos > 0) ? s.targetWos : defaultWos;
+    const launchWeek = Math.max(1, Math.round(s.launchWeek || 1));
+    const orderInc = s.orderIncrement > 0 ? s.orderIncrement : 1;
+
+    const arrivals = {}; // week => cases received
+    if (s.initialCases > 0) arrivals[launchWeek] = (arrivals[launchWeek] || 0) + s.initialCases;
+
+    let onHand = 0;
+    const weeks = [];
+    for (let w = 1; w <= horizon; w++) {
+      onHand += arrivals[w] || 0;
+      const active = w >= launchWeek;
+      const demandCases = active ? weeklyPosCases : 0;
+      const sold = Math.min(onHand, demandCases);
+      onHand -= sold;
+
+      let placedOrder = 0;
+      // The initial sell-in is itself a shipment placed in the launch week
+      if (w === launchWeek && s.initialCases > 0) placedOrder += s.initialCases;
+
+      if (active) {
+        let replen = 0;
+        if (mode === 'wos') {
+          let onOrder = 0;
+          for (const k in arrivals) { if (parseInt(k) > w) onOrder += arrivals[k]; }
+          const targetCover = (targetWos + leadTime) * weeklyPosCases;
+          const need = targetCover - (onHand + onOrder);
+          if (need > 0) replen = roundUpToIncrement(need, orderInc);
+        } else { // pos_fill — replace what sold through this week
+          if (demandCases > 0) replen = roundUpToIncrement(demandCases, orderInc);
+        }
+        if (replen > 0) {
+          arrivals[w + leadTime] = (arrivals[w + leadTime] || 0) + replen;
+          placedOrder += replen;
+        }
+      }
+
+      const date = new Date(startDate.getTime() + (w - 1) * 7 * 86400000);
+      weeks.push({
+        w, date: dateStr(date), monthKey: ncMonthKeyFromDate(date),
+        posUnits: active ? weeklyPosUnits : 0,
+        posCases: demandCases,
+        orderCases: placedOrder,
+        received: arrivals[w] || 0,
+        onHand: onHand,
+        wos: weeklyPosCases > 0 ? onHand / weeklyPosCases : null,
+      });
+    }
+    perSku.push({
+      key: nc.customerName + '|' + s.productNumber,
+      productNumber: s.productNumber, productName: s.productName,
+      brand: s.brand, type: s.type, formation: s.formation, casePack,
+      weeks,
+    });
+  }
+
+  // Collect sorted month keys spanning the simulation
+  const monthSet = new Set();
+  for (const sku of perSku) for (const wk of sku.weeks) monthSet.add(wk.monthKey);
+  const months = [...monthSet].sort();
+
+  nc.sim = { perSku, months, mode, startDate: startVal, horizon };
+  document.getElementById('nc-results-section').classList.remove('hidden');
+  ncPopulateWeekSelector();
+  ncRenderMonthly();
+  ncRenderWeeklyGrid();
+  showToast('Simulation complete — ' + perSku.length + ' SKUs, ' + horizon + ' weeks', 'success');
+}
+
+// Aggregate a sim into per-month {order, pos} totals, optionally for one SKU.
+function ncMonthlyTotals(skuFilter) {
+  const sim = state.newCustomer.sim;
+  const map = new Map(); // monthKey => { order, pos }
+  for (const sku of sim.perSku) {
+    if (skuFilter && sku.key !== skuFilter) continue;
+    for (const wk of sku.weeks) {
+      if (!map.has(wk.monthKey)) map.set(wk.monthKey, { order: 0, pos: 0 });
+      const m = map.get(wk.monthKey);
+      m.order += wk.orderCases;
+      m.pos += wk.posCases;
+    }
+  }
+  return map;
+}
+
+function ncFmt(v, dp) { return (v == null) ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: dp == null ? 0 : dp }); }
+
+function ncRenderMonthly() {
+  const sim = state.newCustomer.sim;
+  const totals = ncMonthlyTotals(null);
+  let totalOrder = 0, totalPos = 0;
+  let html = '<thead><tr><th>Month</th><th style="text-align:right;">Projected Order Cases</th><th style="text-align:right;">Projected POS Cases</th></tr></thead><tbody>';
+  for (const mk of sim.months) {
+    const t = totals.get(mk) || { order: 0, pos: 0 };
+    totalOrder += t.order; totalPos += t.pos;
+    html += '<tr><td>' + fmtMonth(mk) + '</td>' +
+      '<td style="text-align:right;">' + ncFmt(Math.round(t.order)) + '</td>' +
+      '<td style="text-align:right;">' + ncFmt(Math.round(t.pos)) + '</td></tr>';
+  }
+  html += '<tr style="font-weight:700; border-top:2px solid #c7d2fe;"><td>Total</td>' +
+    '<td style="text-align:right;">' + ncFmt(Math.round(totalOrder)) + '</td>' +
+    '<td style="text-align:right;">' + ncFmt(Math.round(totalPos)) + '</td></tr>';
+  html += '</tbody>';
+  document.getElementById('nc-monthly-table').innerHTML = html;
+}
+
+function ncPopulateWeekSelector() {
+  const sel = document.getElementById('nc-week-sku');
+  sel.innerHTML = state.newCustomer.sim.perSku.map(s =>
+    '<option value="' + sanitize(s.key) + '">' + sanitize(s.productNumber + ' — ' + s.productName) + '</option>').join('');
+}
+
+function ncRenderWeeklyGrid() {
+  const sim = state.newCustomer.sim;
+  if (!sim || !sim.perSku.length) return;
+  const sel = document.getElementById('nc-week-sku');
+  const key = sel.value || sim.perSku[0].key;
+  const sku = sim.perSku.find(s => s.key === key) || sim.perSku[0];
+  let html = '<thead><tr><th>Wk</th><th>Week Of</th><th>Month</th>' +
+    '<th style="text-align:right;">POS Units</th><th style="text-align:right;">POS Cases</th>' +
+    '<th style="text-align:right;">Ship Cases</th><th style="text-align:right;">Received</th>' +
+    '<th style="text-align:right;">On Hand</th><th style="text-align:right;">WOS</th></tr></thead><tbody>';
+  for (const wk of sku.weeks) {
+    html += '<tr>' +
+      '<td>' + wk.w + '</td>' +
+      '<td>' + wk.date + '</td>' +
+      '<td>' + fmtMonth(wk.monthKey) + '</td>' +
+      '<td style="text-align:right;">' + ncFmt(Math.round(wk.posUnits)) + '</td>' +
+      '<td style="text-align:right;">' + ncFmt(wk.posCases, 1) + '</td>' +
+      '<td style="text-align:right; font-weight:600;">' + ncFmt(Math.round(wk.orderCases)) + '</td>' +
+      '<td style="text-align:right; color:#6b7280;">' + (wk.received ? ncFmt(Math.round(wk.received)) : '') + '</td>' +
+      '<td style="text-align:right;">' + ncFmt(wk.onHand, 1) + '</td>' +
+      '<td style="text-align:right; ' + (wk.wos != null && wk.wos < 1 ? 'color:#b91c1c; font-weight:600;' : '') + '">' + (wk.wos != null ? ncFmt(wk.wos, 1) : '') + '</td>' +
+      '</tr>';
+  }
+  html += '</tbody>';
+  document.getElementById('nc-weekly-table').innerHTML = html;
+}
+
+// Build per-SKU per-month projection rows (the bridge to export + engine).
+function ncBuildMonthlyRows() {
+  const nc = state.newCustomer;
+  const rows = [];
+  for (const sku of nc.sim.perSku) {
+    const totals = ncMonthlyTotals(sku.key);
+    for (const mk of nc.sim.months) {
+      const t = totals.get(mk);
+      if (!t) continue;
+      rows.push({
+        customer: nc.customerName, sku,
+        month: mk, orderCases: Math.round(t.order), posCases: Math.round(t.pos),
+      });
+    }
+  }
+  return rows;
+}
+
+function exportNewCustomerForecast() {
+  const nc = state.newCustomer;
+  if (!nc.sim) { showToast('Run the simulation first', 'error'); return; }
+  try {
+    const wb = XLSX.utils.book_new();
+
+    // Sheet 1: monthly projection. Uses FORECAST + CUSTOMER_POS_PROJECTION_CASES (not
+    // ORDER_CASES/POS_CASES, which the main parser reads as actuals) so the file is
+    // safely re-uploadable and matches the Apply-to-Engine representation.
+    const monthlyRows = ncBuildMonthlyRows().map(r => {
+      const parts = r.month.split('-');
+      return {
+        CUSTOMER_NAME: r.customer, PRODUCTNUMBER: r.sku.productNumber, PRODUCTNAME: r.sku.productName,
+        BRAND: r.sku.brand, TYPE: r.sku.type, FORMATION: r.sku.formation,
+        YEAR: parseInt(parts[0]), MONTH_NUMBER_OF_YEAR: parseInt(parts[1]),
+        FORECAST: r.orderCases, CUSTOMER_POS_PROJECTION_CASES: r.posCases,
+      };
+    });
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(monthlyRows), 'Monthly Projection');
+
+    // Sheet 2: weekly detail
+    const weeklyRows = [];
+    for (const sku of nc.sim.perSku) {
+      for (const wk of sku.weeks) {
+        weeklyRows.push({
+          CUSTOMER_NAME: nc.customerName, PRODUCTNUMBER: sku.productNumber, PRODUCTNAME: sku.productName,
+          BRAND: sku.brand, TYPE: sku.type, FORMATION: sku.formation,
+          WEEK: wk.w, WEEK_OF: wk.date, MONTH: wk.monthKey.slice(0, 7),
+          POS_UNITS: Math.round(wk.posUnits), POS_CASES: Math.round(wk.posCases * 100) / 100,
+          SHIP_CASES: Math.round(wk.orderCases), RECEIVED_CASES: Math.round(wk.received),
+          ON_HAND_CASES: Math.round(wk.onHand * 100) / 100,
+          WEEKS_OF_SUPPLY: wk.wos != null ? Math.round(wk.wos * 100) / 100 : null,
+        });
+      }
+    }
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(weeklyRows), 'Weekly Detail');
+
+    XLSX.writeFile(wb, 'new_customer_' + (nc.customerName || 'forecast').replace(/[^a-z0-9]+/gi, '_') + '.xlsx');
+    showToast('Exported ' + monthlyRows.length + ' monthly rows', 'success');
+  } catch (e) { showToast('Export error: ' + e.message, 'error'); }
+}
+
+// Merge the new customer's monthly projections into the main forecast engine.
+function applyNewCustomerToEngine() {
+  const nc = state.newCustomer;
+  if (!nc.sim) { showToast('Run the simulation first', 'error'); return; }
+  const customer = nc.customerName;
+  if (!customer) { showToast('Enter a customer name first', 'error'); return; }
+
+  const monthlyRows = ncBuildMonthlyRows();
+  if (!monthlyRows.length) { showToast('Nothing to apply', 'error'); return; }
+
+  // Drop any prior rows/forecasts for this customer (idempotent re-apply)
+  state.parsedRows = state.parsedRows.filter(r => r.customerName !== customer);
+  for (const k of Object.keys(state.skuForecasts)) { if (k.startsWith(customer + '|')) delete state.skuForecasts[k]; }
+  for (const k of Object.keys(state.forecastResults)) { if (k.startsWith(customer + '|')) delete state.forecastResults[k]; }
+
+  // Build parsedRows (projection lives in the existing-forecast + POS-projection fields,
+  // since a brand-new customer has no actuals) and per-SKU saved forecasts.
+  const fcByKey = {};
+  for (const r of monthlyRows) {
+    state.parsedRows.push({
+      customerName: customer, productNumber: r.sku.productNumber, productName: r.sku.productName,
+      brand: r.sku.brand, type: r.sku.type, formation: r.sku.formation,
+      assortmentLogStatus: '', merchandising: '',
+      month: r.month, posCases: null, invoiceCases: null, orderCases: null,
+      forecast: r.orderCases, customerPosProjection: r.posCases,
+      maxWksPerMonth: null, weekNumber: null,
+    });
+    const key = customer + '|' + r.sku.productNumber;
+    (fcByKey[key] = fcByKey[key] || []).push({ month: r.month, statValue: r.orderCases });
+  }
+  for (const key in fcByKey) {
+    fcByKey[key].sort((a, b) => a.month.localeCompare(b.month));
+    state.skuForecasts[key] = fcByKey[key];
+  }
+
+  // Rebuild entity lists from the merged parsedRows (preserves existing forecasts)
+  ncRebuildEntities();
+  if (!state.fileName) state.fileName = 'New Customer: ' + customer;
+
+  // Jump to the Forecast tab filtered to the new customer
+  state.filters = { customer, brand: '', type: '', formation: '', assortmentLogStatus: '', merchandising: '', product: '' };
+  showDashboard();
+  document.getElementById('filter-customer').value = customer;
+  onFilterChange();
+  showToast('Applied ' + customer + ' to the forecast engine (' + Object.keys(fcByKey).length + ' SKUs)', 'success');
+}
+
+// Recompute customers/products/flags from state.parsedRows without clearing forecasts.
+function ncRebuildEntities() {
+  const custSet = new Map(), prodSet = new Map();
+  for (const r of state.parsedRows) {
+    if (!custSet.has(r.customerName)) custSet.set(r.customerName, { name: r.customerName });
+    if (!prodSet.has(r.productNumber)) prodSet.set(r.productNumber, {
+      productNumber: r.productNumber, productName: r.productName || r.productNumber,
+      brand: r.brand, type: r.type, formation: r.formation
+    });
+  }
+  state.customers = [...custSet.values()].sort((a, b) => a.name.localeCompare(b.name));
+  state.products = [...prodSet.values()].sort((a, b) => a.productName.localeCompare(b.productName));
+  state.hasPosData = state.parsedRows.some(r => r.posCases != null && r.posCases > 0);
+  buildWeeksMap();
+  state._cache = { filterKey: '', filtered: [], dashKey: '', dashRows: [] };
 }
 </script>
 </body>
