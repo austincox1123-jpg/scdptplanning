@@ -3,13 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sales Forecasting Engine</title>
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; img-src 'self' data:;">
+  <title>Lodestar — Demand Forecasting</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, Arial, -apple-system, BlinkMacSystemFont, sans-serif; background: #f9fafb; color: #111827; line-height: 1.6; font-size: 15px; -webkit-font-smoothing: antialiased; }
+    /* Precision Enterprise Redux — design tokens */
+    :root {
+      --red: #b30012; --red-dark: #87000b; --red-tint: #fdeceb; --red-border: #e7c3bf;
+      --floor: #f4f1f0; --ink: #1b1c1c; --ink-soft: #2d2d2d; --line: #e3dedd;
+    }
+    body { font-family: 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: var(--floor); color: var(--ink); line-height: 1.6; font-size: 15px; -webkit-font-smoothing: antialiased; letter-spacing: -0.005em; }
     .hidden { display: none !important; }
     /* Layout — wide, full-monitor friendly */
     .container { width: 100%; max-width: 1840px; margin: 0 auto; padding: 0 32px; }
@@ -47,39 +55,50 @@
     .uppercase { text-transform: uppercase; } .tracking-wide { letter-spacing: 0.05em; }
     .underline { text-decoration: underline; }
     /* Colors */
-    .bg-white { background: #fff; } .bg-gray-50 { background: #f9fafb; } .bg-blue-50 { background: #eff6ff; } .bg-blue-600 { background: #2563eb; } .bg-red-50 { background: #fef2f2; } .bg-green-50 { background: #f0fdf4; } .bg-green-700 { background: #15803d; } .bg-gray-100 { background: #f3f4f6; }
+    .bg-white { background: #fff; } .bg-gray-50 { background: #f9fafb; } .bg-blue-50 { background: var(--red-tint); } .bg-blue-600 { background: var(--red); } .bg-red-50 { background: #fef2f2; } .bg-green-50 { background: #f0fdf4; } .bg-green-700 { background: #15803d; } .bg-gray-100 { background: #f3f4f6; }
     .text-white { color: #fff; } .text-gray-400 { color: #9ca3af; } .text-gray-500 { color: #6b7280; } .text-gray-600 { color: #4b5563; } .text-gray-700 { color: #374151; } .text-gray-900 { color: #111827; }
-    .text-blue-600 { color: #2563eb; } .text-red-700 { color: #b91c1c; } .text-green-600 { color: #16a34a; } .text-green-800 { color: #166534; } .text-yellow-700 { color: #a16207; }
+    .text-blue-600 { color: var(--red); } .text-red-700 { color: #b91c1c; } .text-green-600 { color: #16a34a; } .text-green-800 { color: #166534; } .text-yellow-700 { color: #a16207; }
     /* Borders & Radius */
     .border { border: 1px solid #e5e7eb; } .border-b { border-bottom: 1px solid #e5e7eb; } .border-2 { border-width: 2px; } .border-dashed { border-style: dashed; }
-    .border-gray-300 { border-color: #d1d5db; } .border-red-200 { border-color: #fecaca; } .border-green-200 { border-color: #bbf7d0; } .border-blue-500 { border-color: #3b82f6; }
+    .border-gray-300 { border-color: #d1d5db; } .border-red-200 { border-color: #fecaca; } .border-green-200 { border-color: #bbf7d0; } .border-blue-500 { border-color: #b30012; }
     .rounded { border-radius: 4px; } .rounded-md { border-radius: 6px; } .rounded-lg { border-radius: 8px; }
     /* Interactive */
     .cursor-pointer { cursor: pointer; }
     .transition { transition: all 150ms ease; }
     button { cursor: pointer; border: none; font-family: inherit; }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-primary { background: #2563eb; color: #fff; border-radius: 8px; font-weight: 500; }
-    .btn-primary:hover:not(:disabled) { background: #1d4ed8; }
-    .btn-outline { background: #fff; color: #374151; border: 1px solid #d1d5db; border-radius: 8px; font-weight: 500; font-size: 14px; }
-    .btn-outline:hover { background: #f9fafb; }
-    .btn-green { background: #15803d; color: #fff; border-radius: 8px; font-weight: 500; }
-    .btn-green:hover { background: #166534; }
+    .btn-primary { background: var(--red); color: #fff; border-radius: 4px; font-weight: 600; }
+    .btn-primary:hover:not(:disabled) { background: var(--red-dark); }
+    .btn-outline { background: #fff; color: var(--red); border: 1px solid var(--red-border); border-radius: 4px; font-weight: 600; font-size: 14px; }
+    .btn-outline:hover { background: var(--red-tint); border-color: var(--red); }
+    .btn-green { background: var(--red); color: #fff; border-radius: 4px; font-weight: 600; }
+    .btn-green:hover { background: var(--red-dark); }
     select, input[type="range"] { font-family: inherit; }
     select { appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7280' d='M3 5l3 3 3-3'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
-    .select-field { width: 100%; border: 1px solid #d1d5db; border-radius: 6px; padding: 8px 28px 8px 12px; font-size: 14px; background-color: #fff; }
+    .select-field { width: 100%; border: 1px solid #d1d5db; border-radius: 4px; padding: 8px 28px 8px 12px; font-size: 14px; background-color: #fff; color: var(--ink); }
+    .select-field:focus, input[type="text"]:focus, input[type="number"]:focus, input[type="date"]:focus { outline: none; border-color: var(--red); box-shadow: 0 0 0 2px var(--red-tint); }
     .select-sm { padding: 6px 28px 6px 12px; }
     .filter-group { flex: 1 1 0%; min-width: 140px; }
     .filter-group-lg { flex: 1 1 0%; min-width: 200px; }
     .label { display: block; font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 6px; letter-spacing: 0.01em; }
     /* Cards */
-    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
-    /* Nav */
-    .nav { border-bottom: 1px solid #e5e7eb; background: #fff; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; }
+    /* Numbered step badge (New Customer sections) */
+    .step-badge { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 4px; background: var(--red); color: #fff; font-size: 14px; font-weight: 700; margin-right: 10px; flex-shrink: 0; }
+    .step-head { display: flex; align-items: center; }
+    /* Nav — solid Primary Red header */
+    .nav { background: var(--red); border-bottom: none; }
     .nav-inner { max-width: 1840px; margin: 0 auto; padding: 0 32px; height: 60px; display: flex; align-items: center; }
+    .nav, .nav .text-lg, .nav .text-sm, .nav span { color: #fff; }
+    .nav .text-gray-500 { color: rgba(255,255,255,0.7); }
+    /* Nav buttons: ghost-on-red */
+    .nav .btn-outline { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.45); }
+    .nav .btn-outline:hover { background: rgba(255,255,255,0.22); border-color: #fff; }
+    .nav .btn-secondary { background: rgba(255,255,255,0.12); color: #fff; border: 1px solid rgba(255,255,255,0.45); }
+    .nav .btn-secondary:hover { background: rgba(255,255,255,0.22); }
     /* Loading overlay */
     .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
-    .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.7s linear infinite; }
+    .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: var(--red); border-radius: 50%; animation: spin 0.7s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
     .loading-text { margin-left: 16px; font-size: 14px; color: #6b7280; }
     /* Toast */
@@ -90,15 +109,15 @@
     /* Drop zone */
     .drop-zone { border: 2px dashed #d1d5db; border-radius: 8px; padding: 48px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
     .drop-zone:hover { border-color: #9ca3af; }
-    .drop-zone.active { border-color: #3b82f6; background: #eff6ff; }
+    .drop-zone.active { border-color: var(--red); background: var(--red-tint); }
     /* Data grid */
     .grid-container { max-height: 450px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
     table.data-grid { border-collapse: collapse; width: 100%; font-size: 13px; }
-    table.data-grid th { background: #f9fafb; position: sticky; top: 0; z-index: 1; text-align: left; padding: 10px 16px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+    table.data-grid th { background: #f8f6f5; position: sticky; top: 0; z-index: 1; text-align: left; padding: 10px 16px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
     table.data-grid td { padding: 9px 16px; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
     table.data-grid tr:hover td { background: #f9fafb; }
     table.data-grid input[type="number"] { width: 80px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; text-align: right; font-family: inherit; }
-    table.data-grid input[type="number"]:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
+    table.data-grid input[type="number"]:focus { outline: none; border-color: #b30012; box-shadow: 0 0 0 1px #b30012; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .override-cell input { background: #dcfce7 !important; color: #166534; font-weight: 600; }
     .stat-color { color: #8b5cf6; }
@@ -106,7 +125,7 @@
     /* Grouped 2-row header (main grid only) */
     .data-grid.grouped thead tr.group-row th { position: sticky; top: 0; z-index: 3; height: 26px; padding: 4px 12px; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; }
     .data-grid.grouped thead tr.col-row th { top: 26px; }
-    .data-grid.grouped thead tr.group-row .grp-actuals { background: #eff6ff; color: #1d4ed8; }
+    .data-grid.grouped thead tr.group-row .grp-actuals { background: #fdeceb; color: #87000b; }
     .data-grid.grouped thead tr.group-row .grp-forecast { background: #f5f3ff; color: #6d28d9; }
     .data-grid.grouped thead tr.group-row .grp-decision { background: #f0fdf4; color: #15803d; }
     .data-grid .grp-start { border-left: 2px solid #e5e7eb; }
@@ -140,7 +159,7 @@
     .saved-list-scroll { max-height: 228px; overflow-y: auto; }
     .saved-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px; border: 1px solid #e5e7eb; border-radius: 6px; margin-bottom: 6px; font-size: 12px; cursor: pointer; transition: background 0.1s; }
     .saved-item:hover { background: #f9fafb; }
-    .saved-item.active { border-color: #2563eb; background: #eff6ff; }
+    .saved-item.active { border-color: var(--red); background: var(--red-tint); }
     .saved-item .saved-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #374151; }
     .saved-item .saved-months { font-size: 11px; color: #9ca3af; margin-left: 8px; white-space: nowrap; }
     .saved-delete { background: none; border: none; color: #d1d5db; font-size: 16px; padding: 0 4px; margin-left: 4px; cursor: pointer; line-height: 1; }
@@ -160,7 +179,7 @@
     /* View toggle */
     .view-toggle { display: inline-flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; font-size: 12px; }
     .view-toggle button { padding: 4px 14px; background: #fff; border: none; color: #6b7280; cursor: pointer; font-family: inherit; font-size: 12px; }
-    .view-toggle button.active { background: #2563eb; color: #fff; }
+    .view-toggle button.active { background: #b30012; color: #fff; }
     /* Expandable grid rows */
     .expand-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0 4px; color: #6b7280; }
     /* Month exclusion */
@@ -172,7 +191,7 @@
     .weeks-grid .wk-cell { display: flex; align-items: center; gap: 4px; font-size: 11px; }
     .weeks-grid .wk-cell label { color: #6b7280; min-width: 28px; }
     .weeks-grid .wk-cell input { width: 46px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; font-family: inherit; }
-    .weeks-grid .wk-cell input:focus { outline: none; border-color: #2563eb; }
+    .weeks-grid .wk-cell input:focus { outline: none; border-color: #b30012; }
     .wk-cell.wk-five input { background: #fef3c7; }
     .week-row td { background: #f9fafb; font-size: 12px; color: #6b7280; }
     .week-row td:first-child { padding-left: 28px; }
@@ -188,13 +207,14 @@
     .metric-bad { color: #dc2626; }
     .metric-neutral { color: #374151; }
     .bias-over { color: #dc2626; }
-    .bias-under { color: #2563eb; }
+    .bias-under { color: var(--red); }
     .backtest-grid-container { max-height: 250px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; margin-top: 12px; }
-    .backtest-toggle { font-size: 12px; color: #2563eb; cursor: pointer; background: none; border: none; padding: 0; text-decoration: underline; }
-    /* Page toggle */
-    .page-toggle { display: inline-flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; font-size: 13px; margin-left: 16px; }
-    .page-toggle button { padding: 6px 16px; background: #fff; border: none; color: #6b7280; cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 500; }
-    .page-toggle button.active { background: #2563eb; color: #fff; }
+    .backtest-toggle { font-size: 12px; color: var(--red); cursor: pointer; background: none; border: none; padding: 0; text-decoration: underline; }
+    /* Page toggle — nav tabs on the red header */
+    .page-toggle { display: inline-flex; gap: 2px; font-size: 13px; margin-left: 24px; }
+    .page-toggle button { padding: 7px 16px; background: transparent; border: none; color: rgba(255,255,255,0.75); cursor: pointer; font-family: inherit; font-size: 13px; font-weight: 600; border-radius: 4px; }
+    .page-toggle button:hover { background: rgba(255,255,255,0.12); color: #fff; }
+    .page-toggle button.active { background: rgba(0,0,0,0.22); color: #fff; }
     /* Analytics layout */
     .analytics-layout { display: grid; grid-template-columns: 340px 1fr; gap: 24px; }
     @media (max-width: 900px) { .analytics-layout { grid-template-columns: 1fr; } }
@@ -232,7 +252,7 @@
     .attr-share { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 1px; }
     .attr-pct { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.9); margin-top: 2px; }
     .attr-breadcrumb { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }
-    .attr-breadcrumb span { color: #2563eb; cursor: pointer; text-decoration: underline; }
+    .attr-breadcrumb span { color: #b30012; cursor: pointer; text-decoration: underline; }
     .attr-breadcrumb span.current { color: #374151; cursor: default; text-decoration: none; font-weight: 600; }
   </style>
 </head>
@@ -248,10 +268,10 @@
 
   <!-- ===== UPLOAD VIEW ===== -->
   <div id="upload-view" class="min-h-screen flex flex-col">
-    <nav class="nav"><div class="nav-inner"><span class="text-lg font-semibold">Sales Forecast</span></div></nav>
+    <nav class="nav"><div class="nav-inner"><span class="text-lg font-semibold">Lodestar</span></div></nav>
     <div class="flex-1 flex items-center justify-center">
       <div class="container-md" style="padding-top:40px; padding-bottom:40px;">
-        <h1 class="text-3xl font-bold text-center mb-2">Sales Forecasting Engine</h1>
+        <h1 class="text-3xl font-bold text-center mb-2">Lodestar</h1>
         <p class="text-gray-500 text-center mb-8">Upload your Excel file to get started. Everything runs in your browser.</p>
 
         <div class="card p-4 mb-6" style="background:#f9fafb">
@@ -316,7 +336,7 @@
     <nav class="nav">
       <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
-          <span class="text-lg font-semibold">Sales Forecast</span>
+          <span class="text-lg font-semibold">Lodestar</span>
           <div class="page-toggle">
             <button class="active" onclick="showForecastView()">Forecast</button>
             <button onclick="showNewCustomerView()">New Customer</button>
@@ -433,7 +453,7 @@
             <div class="card p-4" id="top-items-section">
               <div class="flex justify-between items-center" style="cursor:pointer;" onclick="toggleTopItems()">
                 <h2 class="text-sm font-semibold text-gray-700"><span id="top-items-arrow">&#9660;</span> Top Items — Last 3 Mo</h2>
-                <button id="back-to-all-btn" class="hidden" onclick="event.stopPropagation(); resetFilters()" style="background:none; font-size:12px; color:#2563eb; text-decoration:underline; border:none; cursor:pointer;">← Back</button>
+                <button id="back-to-all-btn" class="hidden" onclick="event.stopPropagation(); resetFilters()" style="background:none; font-size:12px; color:#b30012; text-decoration:underline; border:none; cursor:pointer;">← Back</button>
               </div>
               <div id="top-items-content" class="mt-2">
                 <div class="grid-container" style="max-height:280px">
@@ -614,7 +634,7 @@
             <div>
               <div class="flex justify-between items-center">
                 <label class="label" style="margin-bottom:0">Promo / Outlier Tags</label>
-                <button onclick="autoDetectOutliers()" style="background:none; font-size:11px; color:#2563eb; text-decoration:underline; border:none; cursor:pointer;">Auto-detect</button>
+                <button onclick="autoDetectOutliers()" style="background:none; font-size:11px; color:#b30012; text-decoration:underline; border:none; cursor:pointer;">Auto-detect</button>
               </div>
               <p class="text-xs text-gray-400 mt-1">Click <strong>+</strong> in Tag column: Promo(P) → Outlier(!) → Remove. Promo months apply lift to future promo windows. Outliers are deweighted in baseline.</p>
             </div>
@@ -657,7 +677,7 @@
     <nav class="nav">
       <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
-          <span class="text-lg font-semibold">Sales Forecast</span>
+          <span class="text-lg font-semibold">Lodestar</span>
           <div class="page-toggle">
             <button onclick="showForecastView()">Forecast</button>
             <button onclick="showNewCustomerView()">New Customer</button>
@@ -843,7 +863,7 @@
     <nav class="nav">
       <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
-          <span class="text-lg font-semibold">Sales Forecast</span>
+          <span class="text-lg font-semibold">Lodestar</span>
           <div class="page-toggle">
             <button onclick="showForecastView()">Forecast</button>
             <button class="active" onclick="showNewCustomerView()">New Customer</button>
@@ -862,7 +882,7 @@
 
       <!-- Step 1: SKU Master upload -->
       <div class="card p-6 mb-6">
-        <h2 class="text-lg font-semibold mb-1" style="color:#111827;">1. SKU Master</h2>
+        <h2 class="text-lg font-semibold mb-1 step-head" style="color:#111827;"><span class="step-badge">1</span>SKU Master</h2>
         <div class="text-sm text-gray-600 mb-3" style="line-height:1.7;">
           <p class="mb-2">Upload a spreadsheet of the SKUs this customer will carry. Only <span class="col-tag">PRODUCTNUMBER</span> is required — every other value can be edited in the table below after upload.</p>
           <p class="mb-2" style="color:#6b7280;">Optional columns:</p>
@@ -896,7 +916,7 @@
       <!-- Step 2: Scenario config + assumptions (hidden until SKUs loaded) -->
       <div id="nc-config-section" class="hidden">
         <div class="card p-6 mb-6">
-          <h2 class="text-lg font-semibold mb-3" style="color:#111827;">2. Scenario Assumptions</h2>
+          <h2 class="text-lg font-semibold mb-3 step-head" style="color:#111827;"><span class="step-badge">2</span>Scenario Assumptions</h2>
           <div class="flex flex-wrap gap-4 items-end mb-2">
             <div>
               <label class="label">Launch / First Ship Date</label>
@@ -968,7 +988,7 @@
       <!-- Step 3: Results (hidden until simulation runs) -->
       <div id="nc-results-section" class="hidden">
         <div class="flex justify-between items-center mb-3">
-          <h2 class="text-xl font-bold" style="color:#111827;">3. Forecast Results</h2>
+          <h2 class="text-xl font-bold step-head" style="color:#111827;"><span class="step-badge">3</span>Forecast Results</h2>
           <div class="flex gap-2">
             <button onclick="exportNewCustomerForecast()" class="px-4 py-2 btn-outline" style="font-size:13px;">Export Excel</button>
             <button onclick="applyNewCustomerToEngine()" class="px-4 py-2 btn-green" style="font-size:13px;">Apply to Forecast Engine</button>
@@ -3385,7 +3405,7 @@ function renderAccuracyFromResults(backtest) {
   const frag = document.createDocumentFragment();
   for (const r of backtest.results) {
     const tr = document.createElement('tr');
-    const errColor = r.error > 0 ? 'color:#dc2626' : r.error < 0 ? 'color:#2563eb' : '';
+    const errColor = r.error > 0 ? 'color:#dc2626' : r.error < 0 ? 'color:#5d5f5f' : '';
     tr.innerHTML =
       '<td>' + sanitize(r.month) + '</td>' +
       '<td class="num">' + fmt(r.actual) + '</td>' +
@@ -3702,7 +3722,7 @@ function renderChart(rows) {
 
   const labels = chartRows.map(r => fmtTimeKey(r.month));
   const datasets = [
-    { label: 'POS', data: chartRows.map(r=>r.posCases), borderColor: '#3b82f6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'POS', data: chartRows.map(r=>r.posCases), borderColor: '#b30012', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Invoice', data: chartRows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Orders', data: chartRows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Existing Fcst', data: chartRows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
@@ -4011,7 +4031,7 @@ function renderTopItems() {
     const tr = document.createElement('tr');
     const isActive = sel && sel.customer === item.customer && sel.product === item.product;
     tr.style.cursor = 'pointer';
-    if (isActive) { tr.style.background = '#eff6ff'; tr.style.fontWeight = '600'; }
+    if (isActive) { tr.style.background = '#fdeceb'; tr.style.fontWeight = '600'; }
     tr.dataset.customer = item.customer;
     tr.dataset.product = item.product;
     tr.innerHTML =
@@ -4672,7 +4692,7 @@ function renderRiskOppFlags(data) {
     opportunity: { bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a', label: 'Opportunity' },
     risk: { bg: '#fef2f2', border: '#fecaca', color: '#dc2626', label: 'Risk' },
     destocking: { bg: '#fff7ed', border: '#fed7aa', color: '#ea580c', label: 'Destocking' },
-    stocking: { bg: '#eff6ff', border: '#bfdbfe', color: '#2563eb', label: 'Stocking' }
+    stocking: { bg: '#fdeceb', border: '#bfdbfe', color: '#b30012', label: 'Stocking' }
   };
   // Table header
   var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
@@ -4834,7 +4854,7 @@ function renderAnalyticsFilterBar() {
   bar.classList.remove('hidden');
   bar.style.display = 'flex';
   bar.innerHTML = '<span>' + parts.join(' &middot; ') + '</span>' +
-    '<button onclick="analyticsSelection={customer:null,brand:null,type:null};renderAnalytics()" style="background:none;border:none;color:#2563eb;font-size:12px;cursor:pointer;text-decoration:underline;">Clear filters</button>';
+    '<button onclick="analyticsSelection={customer:null,brand:null,type:null};renderAnalytics()" style="background:none;border:none;color:#b30012;font-size:12px;cursor:pointer;text-decoration:underline;">Clear filters</button>';
 }
 
 function renderAnalyticsExcludeMonths() {
@@ -4935,7 +4955,7 @@ function renderBreakdown(containerId, items, dimension) {
     const cls = item.pct > 0.5 ? 'kpi-up' : item.pct < -0.5 ? 'kpi-down' : 'kpi-flat';
     const arrow = item.pct > 0.5 ? '\u25B2' : item.pct < -0.5 ? '\u25BC' : '';
     const isActive = sel === item.name;
-    const activeStyle = isActive ? ' style="background:#eff6ff; border-radius:4px; padding:10px 6px; margin:0 -6px;"' : '';
+    const activeStyle = isActive ? ' style="background:#fdeceb; border-radius:4px; padding:10px 6px; margin:0 -6px;"' : '';
 
     // POS row
     let posRow = '';
@@ -4957,7 +4977,7 @@ function renderBreakdown(containerId, items, dimension) {
       '</div>';
     }
 
-    return '<div class="breakdown-item" data-dim="' + dimension + '" data-name="' + sanitize(item.name) + '"' + activeStyle + ' style="cursor:pointer;' + (isActive ? 'background:#eff6ff;border-radius:4px;padding:10px 6px;margin:0 -6px' : '') + '">' +
+    return '<div class="breakdown-item" data-dim="' + dimension + '" data-name="' + sanitize(item.name) + '"' + activeStyle + ' style="cursor:pointer;' + (isActive ? 'background:#fdeceb;border-radius:4px;padding:10px 6px;margin:0 -6px' : '') + '">' +
       '<div style="display:flex; align-items:center; gap:6px;">' +
         '<span class="breakdown-name">' + sanitize(item.name) + '</span>' +
         '<span class="breakdown-bars">' +
@@ -4992,7 +5012,7 @@ function renderBreakdown(containerId, items, dimension) {
 // ============================================================
 // ITEM ATTRIBUTION — Brand > Type > Formation drill-down
 // ============================================================
-const ATTR_COLORS = ['#1e3a5f','#2563eb','#3b82f6','#60a5fa','#93c5fd','#7c3aed','#8b5cf6','#a78bfa','#0d9488','#14b8a6','#2dd4bf','#d97706','#f59e0b','#fbbf24','#dc2626','#ef4444'];
+const ATTR_COLORS = ['#1e3a5f','#b30012','#b30012','#60a5fa','#93c5fd','#7c3aed','#8b5cf6','#a78bfa','#0d9488','#14b8a6','#2dd4bf','#d97706','#f59e0b','#fbbf24','#dc2626','#ef4444'];
 let attrDrillState = { level: 'brand', brand: null, type: null };
 // Cross-filter state for analytics: clicking a breakdown bar filters the other sections
 let analyticsSelection = { customer: null, brand: null, type: null };
@@ -6302,8 +6322,8 @@ function ncRenderMonthlyChart() {
   ncMonthlyChart = new Chart(ctx, {
     type: 'bar',
     data: { labels, datasets: [
-      { label: 'Order Cases (shipments)', data: order, backgroundColor: '#16a34a' },
-      { label: 'POS Cases (consumer)', data: pos, backgroundColor: '#2563eb' },
+      { label: 'Order Cases (shipments)', data: order, backgroundColor: '#b30012' },
+      { label: 'POS Cases (consumer)', data: pos, backgroundColor: '#e7b8b3' },
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
@@ -6334,10 +6354,10 @@ function ncRenderWeeklyChart(sku) {
   ncWeeklyChart = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets: [
-      { label: 'On-Hand Inventory (cases)', data: onHand, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)', fill: true, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
-      { label: 'POS Cases', data: pos, borderColor: '#2563eb', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
-      { label: 'Ship Cases', data: ship, borderColor: '#16a34a', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
-      { label: 'Weeks of Supply', data: wos, borderColor: '#9333ea', borderWidth: 1.5, borderDash: [5, 4], tension: 0.2, pointRadius: 0, yAxisID: 'y1' },
+      { label: 'On-Hand Inventory (cases)', data: onHand, borderColor: '#cf6a64', backgroundColor: 'rgba(179,0,18,0.10)', fill: true, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'POS Cases', data: pos, borderColor: '#b30012', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'Ship Cases', data: ship, borderColor: '#1b1c1c', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'Weeks of Supply', data: wos, borderColor: '#906f6b', borderWidth: 1.5, borderDash: [5, 4], tension: 0.2, pointRadius: 0, yAxisID: 'y1' },
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
