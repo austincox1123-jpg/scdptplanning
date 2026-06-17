@@ -819,7 +819,11 @@
             <div style="font-size:13px; color:#4b5563; line-height:1.6;">A simpler 1:1 mode — each week replaces exactly what sold through (rounded up to the Order Increment). Inventory stays lean; useful for steady-state sell-through rather than pipeline building. A <strong>Replenishment Start Date</strong> sets when 1:1 ordering begins: before that week the launch shipment alone carries demand (no replenishment orders), and from the trigger week onward each week's sell-through is reordered. Defaults to the launch date (replenish immediately).</div>
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
-            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export &amp; Apply to Engine</div>
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Assumptions (round-trip)</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;"><strong>Export Assumptions</strong> (on the Per-SKU Assumptions card) downloads every current per-SKU input — velocity, ramp weeks, ounces, stores, case pack, initial shipment, launch week, WOS — in the SKU-master column format. Edit it offline, then drop it back on the <strong>SKU Master</strong> box to reload the whole scenario and keep iterating. This is the editing round-trip; it is separate from the forecast-engine export below. Scenario-level settings (launch date, mode, lead time) are re-entered in the UI.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Forecast &amp; Apply to Engine</div>
             <div style="font-size:13px; color:#4b5563; line-height:1.6;">Weekly shipments and POS roll up to calendar months. <strong>Export Excel</strong> produces a re-uploadable monthly projection plus a weekly-detail sheet. <strong>Apply to Forecast Engine</strong> adds the customer to the main Forecast tab, with the monthly order projection saved as its forecast and the monthly POS projection stored as the customer POS projection — letting the new customer flow through the same grid, overrides, and exports as historical customers. Re-applying replaces the prior run.</div>
           </div>
         </div>
@@ -852,7 +856,7 @@
       <!-- Step 1: SKU Master upload -->
       <div class="card p-6 mb-6">
         <h2 class="text-lg font-semibold mb-1" style="color:#111827;">1. SKU Master</h2>
-        <p class="text-xs text-gray-500 mb-3">Upload a SKU list for the new customer. Required column: <span class="col-tag">PRODUCTNUMBER</span>. Optional: <span class="col-tag">PRODUCTNAME</span> <span class="col-tag">BRAND</span> <span class="col-tag">TYPE</span> <span class="col-tag">FORMATION</span> <span class="col-tag">OUNCES</span> <span class="col-tag">CASE_PACK</span> <span class="col-tag">STORES</span> <span class="col-tag">VELOCITY</span> <span class="col-tag">ORDER_INCREMENT</span> <span class="col-tag">INITIAL_SHIPMENT_CASES</span> <span class="col-tag">LAUNCH_WEEK</span> <span class="col-tag">RAMP_WEEKS</span> <span class="col-tag">TARGET_WOS</span></p>
+        <p class="text-xs text-gray-500 mb-3">Upload a SKU list for the new customer. Required column: <span class="col-tag">PRODUCTNUMBER</span>. Optional: <span class="col-tag">PRODUCTNAME</span> <span class="col-tag">BRAND</span> <span class="col-tag">TYPE</span> <span class="col-tag">FORMATION</span> <span class="col-tag">OUNCES</span> <span class="col-tag">CASE_PACK</span> <span class="col-tag">STORES</span> <span class="col-tag">VELOCITY</span> <span class="col-tag">ORDER_INCREMENT</span> <span class="col-tag">INITIAL_SHIPMENT_CASES</span> <span class="col-tag">LAUNCH_WEEK</span> <span class="col-tag">RAMP_WEEKS</span> <span class="col-tag">TARGET_WOS</span><br>Resuming an earlier scenario? Re-upload the <strong>Export Assumptions</strong> file here to reload all your edited values.</p>
         <div class="flex gap-4 items-end flex-wrap">
           <div>
             <label class="label">New Customer Name</label>
@@ -925,6 +929,7 @@
           <div class="flex justify-between items-center mb-3">
             <h2 class="text-lg font-semibold" style="color:#111827;">Per-SKU Assumptions</h2>
             <div class="flex gap-2">
+              <button onclick="exportNewCustomerAssumptions()" class="px-3 py-1.5 btn-outline" style="font-size:12px;" title="Download current assumptions to edit and re-upload later via the SKU Master box">Export Assumptions</button>
               <button onclick="ncApplyDefaultsToAll()" class="px-3 py-1.5 btn-secondary" style="font-size:12px;">Apply Scenario Defaults to All</button>
               <button onclick="runNcSimulation()" class="px-4 py-1.5 btn-primary" style="font-size:13px;">Run Simulation</button>
             </div>
@@ -6072,6 +6077,35 @@ function ncBuildMonthlyRows() {
     }
   }
   return rows;
+}
+
+// Export the current per-SKU assumptions in the SKU-master format so they can be
+// edited offline and re-uploaded via the SKU Master box to resume/iterate.
+function exportNewCustomerAssumptions() {
+  const nc = state.newCustomer;
+  if (!nc.skus.length) { showToast('Load a SKU master first', 'error'); return; }
+  try {
+    const blank = v => (v == null ? '' : v);
+    const rows = nc.skus.map(s => ({
+      PRODUCTNUMBER: s.productNumber,
+      PRODUCTNAME: s.productName,
+      BRAND: s.brand, TYPE: s.type, FORMATION: s.formation,
+      OUNCES: blank(s.ounces),
+      CASE_PACK: s.casePack,
+      STORES: s.stores,
+      VELOCITY: s.velocity,
+      ORDER_INCREMENT: s.orderIncrement,
+      INITIAL_SHIPMENT_CASES: s.initialCases,
+      LAUNCH_WEEK: s.launchWeek,
+      RAMP_WEEKS: blank(s.rampWeeks),   // blank = auto from formation + ounces
+      TARGET_WOS: blank(s.targetWos),   // blank = use scenario default
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'SKU Assumptions');
+    const name = (nc.customerName || document.getElementById('nc-customer-name').value || 'new_customer').replace(/[^a-z0-9]+/gi, '_');
+    XLSX.writeFile(wb, 'new_customer_assumptions_' + name + '.xlsx');
+    showToast('Exported ' + rows.length + ' SKU assumptions — edit and re-upload via SKU Master to resume', 'success');
+  } catch (e) { showToast('Export error: ' + e.message, 'error'); }
 }
 
 function exportNewCustomerForecast() {
