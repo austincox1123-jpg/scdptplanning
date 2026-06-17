@@ -968,6 +968,7 @@ const state = {
   _activeMoqKey: null,   // item key the MOQ field/hint were last detected for
   isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
+  weeksPerMonthConfig: [4, 4, 5, 4, 4, 5, 4, 4, 5, 4, 4, 5], // 4-4-5 default; reset in loadData
   weeksMap: {},          // month string => maxWksPerMonth value from upload
   selectedSku: null,     // {customer, product} — top items highlight/drill, doesn't affect grid
   _cache: { filterKey: '', filtered: [], dashKey: '', dashRows: [] },
