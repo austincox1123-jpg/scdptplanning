@@ -959,7 +959,7 @@
 
         <div class="card p-6 mb-6">
           <div class="flex justify-between items-center mb-3">
-            <h2 class="text-lg font-semibold" style="color:#111827;">Weekly Simulation Detail</h2>
+            <h2 class="text-lg font-semibold" style="color:#111827;">Weekly Forecast — POS, Shipments &amp; Inventory</h2>
             <select id="nc-week-sku" class="select-field" style="width:280px;" onchange="ncRenderWeeklyGrid()"></select>
           </div>
           <div style="height:320px; position:relative; margin-bottom:18px;"><canvas id="nc-weekly-chart"></canvas></div>
@@ -6044,16 +6044,39 @@ function ncRenderMonthly() {
 
 function ncPopulateWeekSelector() {
   const sel = document.getElementById('nc-week-sku');
-  sel.innerHTML = state.newCustomer.sim.perSku.map(s =>
-    '<option value="' + sanitize(s.key) + '">' + sanitize(s.productNumber + ' — ' + s.productName) + '</option>').join('');
+  sel.innerHTML = '<option value="__ALL__">All SKUs (total)</option>' +
+    state.newCustomer.sim.perSku.map(s =>
+      '<option value="' + sanitize(s.key) + '">' + sanitize(s.productNumber + ' — ' + s.productName) + '</option>').join('');
+  sel.value = '__ALL__';
+}
+
+// Build a pseudo-SKU whose weeks are the sum of every SKU's weekly values (aligned by week
+// index — all SKUs share the same horizon and calendar). WOS = total on-hand / total POS.
+function ncAggregateWeeks() {
+  const perSku = state.newCustomer.sim.perSku;
+  const n = perSku.length ? perSku[0].weeks.length : 0;
+  const weeks = [];
+  for (let i = 0; i < n; i++) {
+    const base = perSku[0].weeks[i];
+    let posUnits = 0, posCases = 0, orderCases = 0, received = 0, onHand = 0;
+    for (const sku of perSku) {
+      const wk = sku.weeks[i]; if (!wk) continue;
+      posUnits += wk.posUnits; posCases += wk.posCases; orderCases += wk.orderCases;
+      received += wk.received; onHand += wk.onHand;
+    }
+    weeks.push({ w: base.w, date: base.date, monthKey: base.monthKey,
+      posUnits, posCases, orderCases, received, onHand,
+      wos: posCases > 0 ? onHand / posCases : null });
+  }
+  return { key: '__ALL__', productNumber: 'All SKUs', productName: 'All SKUs', weeks };
 }
 
 function ncRenderWeeklyGrid() {
   const sim = state.newCustomer.sim;
   if (!sim || !sim.perSku.length) return;
   const sel = document.getElementById('nc-week-sku');
-  const key = sel.value || sim.perSku[0].key;
-  const sku = sim.perSku.find(s => s.key === key) || sim.perSku[0];
+  const key = sel.value || '__ALL__';
+  const sku = (key === '__ALL__') ? ncAggregateWeeks() : (sim.perSku.find(s => s.key === key) || sim.perSku[0]);
   let html = '<thead><tr><th>Wk</th><th>Week Of</th><th>Month</th>' +
     '<th style="text-align:right;">POS Units</th><th style="text-align:right;">POS Cases</th>' +
     '<th style="text-align:right;">Ship Cases</th><th style="text-align:right;">Received</th>' +
@@ -6109,7 +6132,7 @@ function ncRenderWeeklyChart(sku) {
   if (!sku) {
     const sim = state.newCustomer.sim;
     const key = document.getElementById('nc-week-sku').value;
-    sku = sim.perSku.find(s => s.key === key) || sim.perSku[0];
+    sku = (key === '__ALL__') ? ncAggregateWeeks() : (sim.perSku.find(s => s.key === key) || sim.perSku[0]);
   }
   const labels = sku.weeks.map(w => 'W' + w.w);
   const pos = sku.weeks.map(w => Math.round(w.posCases));
