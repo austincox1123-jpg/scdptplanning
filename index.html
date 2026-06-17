@@ -802,7 +802,7 @@
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Weekly POS</div>
             <div style="font-size:13px; color:#4b5563; line-height:1.6;">Consumer demand each week is Stores × Velocity (units), converted to cases by dividing by Case Pack. POS begins in the SKU's launch week.</div>
-            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">Weekly POS Cases = (Stores × Velocity × Ramp) / Case Pack</div>
+            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">Weekly POS Cases = (Stores × Velocity × Ramp) / Total Units per Case<br>Total Units per Case = Inner/Case × Units/Case  (or just Units/Case when Inner = 0)</div>
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Velocity Ramp (by Formation &amp; Ounces)</div>
@@ -856,7 +856,7 @@
       <!-- Step 1: SKU Master upload -->
       <div class="card p-6 mb-6">
         <h2 class="text-lg font-semibold mb-1" style="color:#111827;">1. SKU Master</h2>
-        <p class="text-xs text-gray-500 mb-3">Upload a SKU list for the new customer. Required column: <span class="col-tag">PRODUCTNUMBER</span>. Optional: <span class="col-tag">PRODUCTNAME</span> <span class="col-tag">BRAND</span> <span class="col-tag">TYPE</span> <span class="col-tag">FORMATION</span> <span class="col-tag">OUNCES</span> <span class="col-tag">CASE_PACK</span> <span class="col-tag">STORES</span> <span class="col-tag">VELOCITY</span> <span class="col-tag">ORDER_INCREMENT</span> <span class="col-tag">INITIAL_SHIPMENT_CASES</span> <span class="col-tag">LAUNCH_WEEK</span> <span class="col-tag">RAMP_WEEKS</span> <span class="col-tag">TARGET_WOS</span><br>Resuming an earlier scenario? Re-upload the <strong>Export Assumptions</strong> file here to reload all your edited values.</p>
+        <p class="text-xs text-gray-500 mb-3">Upload a SKU list for the new customer. Required column: <span class="col-tag">PRODUCTNUMBER</span>. Optional: <span class="col-tag">PRODUCTNAME</span> <span class="col-tag">BRAND</span> <span class="col-tag">TYPE</span> <span class="col-tag">FORMATION</span> <span class="col-tag">OUNCES</span> <span class="col-tag">UNITSPERCASE</span> <span class="col-tag">INNERPACKCASE</span> <span class="col-tag">STORES</span> <span class="col-tag">VELOCITY</span> <span class="col-tag">ORDER_INCREMENT</span> <span class="col-tag">INITIAL_SHIPMENT_CASES</span> <span class="col-tag">LAUNCH_WEEK</span> <span class="col-tag">RAMP_WEEKS</span> <span class="col-tag">TARGET_WOS</span><br><span style="color:#6b7280;">LAUNCH_WEEK is a <strong>date</strong> (when the SKU starts selling). INNERPACKCASE is optional — if &gt; 0, total units per case = INNERPACKCASE × UNITSPERCASE. Resuming an earlier scenario? Re-upload the <strong>Export Assumptions</strong> file here to reload all your edited values.</span></p>
         <div class="flex gap-4 items-end flex-wrap">
           <div>
             <label class="label">New Customer Name</label>
@@ -885,8 +885,8 @@
               <input type="date" id="nc-start-date" class="select-field" style="width:160px;">
             </div>
             <div>
-              <label class="label">Horizon (weeks)</label>
-              <input type="number" id="nc-horizon" value="26" min="4" max="104" class="select-field" style="width:90px;">
+              <label class="label">Horizon (months)</label>
+              <input type="number" id="nc-horizon" value="18" min="1" max="36" class="select-field" style="width:90px;">
             </div>
             <div>
               <label class="label">Replenishment Mode</label>
@@ -1005,7 +1005,7 @@ const state = {
   // New Customer launch-forecast builder (self-contained, no persistence)
   newCustomer: {
     customerName: '',
-    skus: [],        // [{ productNumber, productName, brand, type, formation, casePack, stores, velocity, orderIncrement, initialCases, launchWeek, targetWos }]
+    skus: [],        // [{ productNumber, productName, brand, type, formation, ounces, unitsPerCase, innerPack, stores, velocity, orderIncrement, initialCases, launchDate, rampWeeks, targetWos }]
     sim: null,       // { perSku: [{ key, productNumber, productName, weeks:[...] }], months: [...] }
     _initialized: false,
   },
@@ -5569,12 +5569,13 @@ const NC_SKU_COLS = {
   'PRODUCTNUMBER':'productNumber','PRODUCT_NUMBER':'productNumber','SKU':'productNumber','ITEM':'productNumber',
   'PRODUCTNAME':'productName','PRODUCT_NAME':'productName','DESCRIPTION':'productName','NAME':'productName',
   'BRAND':'brand','TYPE':'type','FORMATION':'formation',
-  'CASE_PACK':'casePack','CASEPACK':'casePack','UNITS_PER_CASE':'casePack','PACK_SIZE':'casePack','PACK':'casePack',
+  'UNITSPERCASE':'unitsPerCase','UNITS_PER_CASE':'unitsPerCase','CASE_PACK':'unitsPerCase','CASEPACK':'unitsPerCase','PACK_SIZE':'unitsPerCase','PACK':'unitsPerCase',
+  'INNERPACKCASE':'innerPack','INNER_PACK_CASE':'innerPack','INNER_PACK':'innerPack','INNER':'innerPack','INNERS':'innerPack',
   'STORES':'stores','STORE_COUNT':'stores','NUM_STORES':'stores','DOORS':'stores',
   'VELOCITY':'velocity','UNITS_PER_STORE_PER_WEEK':'velocity','UPSPW':'velocity','RATE_OF_SALE':'velocity',
   'ORDER_INCREMENT':'orderIncrement','CASE_MULTIPLE':'orderIncrement','MOQ_CASES':'orderIncrement',
   'INITIAL_SHIPMENT_CASES':'initialCases','INITIAL_CASES':'initialCases','SELL_IN_CASES':'initialCases','PIPELINE_CASES':'initialCases',
-  'LAUNCH_WEEK':'launchWeek','START_WEEK':'launchWeek',
+  'LAUNCH_WEEK':'launchDate','LAUNCH_DATE':'launchDate','LAUNCH':'launchDate',
   'TARGET_WOS':'targetWos','WOS':'targetWos','WEEKS_OF_SUPPLY':'targetWos',
   'OUNCES':'ounces','OZ':'ounces','SIZE_OZ':'ounces','UNIT_SIZE':'ounces','SIZE':'ounces',
   'RAMP_WEEKS':'rampWeeks','RAMP':'rampWeeks','WEEKS_TO_FULL':'rampWeeks',
@@ -5620,12 +5621,13 @@ function parseSkuMasterFile(buffer) {
       brand: String(m.brand || '').trim(),
       type: String(m.type || '').trim(),
       formation: String(m.formation || '').trim(),
-      casePack: ncToNum(m.casePack),
+      unitsPerCase: ncToNum(m.unitsPerCase),
+      innerPack: ncToNum(m.innerPack),
       stores: ncToNum(m.stores),
       velocity: ncToNum(m.velocity),
       orderIncrement: ncToNum(m.orderIncrement),
       initialCases: ncToNum(m.initialCases),
-      launchWeek: ncToNum(m.launchWeek),
+      launchDate: ncCellToDateStr(m.launchDate),
       targetWos: ncToNum(m.targetWos),
       ounces: ncToNum(m.ounces),
       rampWeeks: ncToNum(m.rampWeeks),
@@ -5638,7 +5640,7 @@ function parseSkuMasterFile(buffer) {
 // Scenario-sheet setting keys → internal field names.
 const NC_SCENARIO_COLS = {
   'LAUNCH_DATE':'startDate','SHIP_DATE':'startDate','START_DATE':'startDate','FIRST_SHIP_DATE':'startDate',
-  'HORIZON_WEEKS':'horizon','HORIZON':'horizon',
+  'HORIZON_MONTHS':'horizon','HORIZON':'horizon',
   'REPLEN_MODE':'mode','MODE':'mode','REPLENISHMENT_MODE':'mode',
   'LEAD_TIME_WEEKS':'leadTime','LEAD_TIME':'leadTime',
   'TARGET_WOS':'targetWos','WEEKS_OF_SUPPLY':'targetWos',
@@ -5709,16 +5711,31 @@ function ncMakeSku(p) {
     productNumber: p.productNumber,
     productName: p.productName || p.productNumber,
     brand: p.brand || '', type: p.type || '', formation: p.formation || '',
-    casePack: (p.casePack != null && p.casePack > 0) ? p.casePack : 1,
+    unitsPerCase: (p.unitsPerCase != null && p.unitsPerCase > 0) ? p.unitsPerCase : 1,
+    innerPack: (p.innerPack != null && p.innerPack > 0) ? p.innerPack : 0, // 0 = no inner structure
     stores: p.stores != null ? p.stores : 0,
     velocity: p.velocity != null ? p.velocity : 0,
     orderIncrement: (p.orderIncrement != null && p.orderIncrement > 0) ? p.orderIncrement : 1,
     initialCases: p.initialCases != null ? p.initialCases : 0,
-    launchWeek: (p.launchWeek != null && p.launchWeek >= 1) ? Math.round(p.launchWeek) : 1,
+    launchDate: p.launchDate || '', // '' = launch on the scenario start date
     targetWos: (p.targetWos != null && p.targetWos > 0) ? p.targetWos : null, // null = use scenario default
     ounces: (p.ounces != null && p.ounces > 0) ? p.ounces : null,
     rampWeeks: (p.rampWeeks != null && p.rampWeeks > 0) ? p.rampWeeks : null, // null = auto from formation + ounces
   };
+}
+
+// Total units per case. When an inner-pack count is given, total = inner × units-per-case.
+function ncEffectiveUnitsPerCase(s) {
+  const upc = s.unitsPerCase > 0 ? s.unitsPerCase : 1;
+  return (s.innerPack && s.innerPack > 0) ? s.innerPack * upc : upc;
+}
+
+// Convert a SKU's launch date to a 1-based week index relative to the scenario start date.
+function ncLaunchWeekFor(s, startDate) {
+  if (!s.launchDate) return 1;
+  const d = new Date(s.launchDate + 'T00:00:00');
+  if (isNaN(d.getTime())) return 1;
+  return Math.max(1, Math.floor((d.getTime() - startDate.getTime()) / (7 * 86400000)) + 1);
 }
 
 // Auto-derive ramp weeks (time to reach full velocity) from a SKU's formation and ounces.
@@ -5815,12 +5832,16 @@ function loadNcDemo() {
     document.getElementById('nc-customer-name').value = 'Target';
     state.newCustomer.customerName = 'Target';
   }
+  // Staggered launch for two SKUs: one week after the scenario start date
+  const startVal = document.getElementById('nc-start-date').value;
+  let wk2 = '';
+  if (startVal) { const d = new Date(startVal + 'T00:00:00'); wk2 = dateStr(new Date(d.getTime() + 7 * 86400000)); }
   state.newCustomer.skus = [
-    ncMakeSku({ productNumber:'CDF-001', productName:'Premium Canine Dry Kibble 30lb', brand:'Canine', type:'Dry Food', formation:'Kibble', ounces:480, casePack:1, stores:1800, velocity:0.8, orderIncrement:1, initialCases:1200, launchWeek:1 }),
-    ncMakeSku({ productNumber:'CWF-001', productName:'Canine Gourmet Wet Pate 12pk', brand:'Canine', type:'Wet Food', formation:'Pate', ounces:3.5, casePack:12, stores:1800, velocity:6, orderIncrement:5, initialCases:900, launchWeek:1 }),
-    ncMakeSku({ productNumber:'CTF-001', productName:'Canine Training Treats Trial 4oz', brand:'Canine', type:'Treat', formation:'Trial Treat', ounces:4, casePack:8, stores:1800, velocity:9, orderIncrement:5, initialCases:500, launchWeek:1 }),
-    ncMakeSku({ productNumber:'FDF-001', productName:'Feline Indoor Dry Kibble 12lb', brand:'Feline', type:'Dry Food', formation:'Kibble', ounces:192, casePack:1, stores:1500, velocity:0.6, orderIncrement:1, initialCases:700, launchWeek:2 }),
-    ncMakeSku({ productNumber:'FWF-001', productName:'Feline Select Wet Pate 12pk', brand:'Feline', type:'Wet Food', formation:'Pate', ounces:3, casePack:12, stores:1500, velocity:5, orderIncrement:5, initialCases:600, launchWeek:2 }),
+    ncMakeSku({ productNumber:'CDF-001', productName:'Premium Canine Dry Kibble 30lb', brand:'Canine', type:'Dry Food', formation:'Kibble', ounces:480, unitsPerCase:1, innerPack:0, stores:1800, velocity:0.8, orderIncrement:1, initialCases:1200, launchDate:'' }),
+    ncMakeSku({ productNumber:'CWF-001', productName:'Canine Gourmet Wet Pate 12pk', brand:'Canine', type:'Wet Food', formation:'Pate', ounces:3.5, unitsPerCase:12, innerPack:0, stores:1800, velocity:6, orderIncrement:5, initialCases:900, launchDate:'' }),
+    ncMakeSku({ productNumber:'CTF-001', productName:'Canine Training Treats Trial 4oz', brand:'Canine', type:'Treat', formation:'Trial Treat', ounces:4, unitsPerCase:4, innerPack:2, stores:1800, velocity:9, orderIncrement:5, initialCases:500, launchDate:'' }),
+    ncMakeSku({ productNumber:'FDF-001', productName:'Feline Indoor Dry Kibble 12lb', brand:'Feline', type:'Dry Food', formation:'Kibble', ounces:192, unitsPerCase:1, innerPack:0, stores:1500, velocity:0.6, orderIncrement:1, initialCases:700, launchDate:wk2 }),
+    ncMakeSku({ productNumber:'FWF-001', productName:'Feline Select Wet Pate 12pk', brand:'Feline', type:'Wet Food', formation:'Pate', ounces:3, unitsPerCase:12, innerPack:0, stores:1500, velocity:5, orderIncrement:5, initialCases:600, launchDate:wk2 }),
   ];
   document.getElementById('nc-sku-status').textContent = state.newCustomer.skus.length + ' demo SKUs loaded';
   document.getElementById('nc-config-section').classList.remove('hidden');
@@ -5840,8 +5861,8 @@ function ncRenderSkuTable() {
   const baseWeeks = ncToNum(document.getElementById('nc-ramp-base-weeks') ? document.getElementById('nc-ramp-base-weeks').value : null) || 8;
   const inp = (i, field, val, step) => '<input type="number" step="' + (step||'any') + '" min="0" value="' + (val != null ? val : '') + '" oninput="ncUpdateSku(' + i + ',\'' + field + '\',this.value)">';
   let html = '<thead><tr>' +
-    '<th>Product #</th><th>Name</th><th>Ounces</th><th>Case Pack</th><th>Stores</th><th>Velocity (u/store/wk)</th>' +
-    '<th>Order Incr (cases)</th><th>Initial Ship (cases)</th><th>Launch Wk</th>' +
+    '<th>Product #</th><th>Name</th><th>Ounces</th><th>Units/Case</th><th>Inner/Case</th><th>Total Units/Case</th><th>Stores</th><th>Velocity (u/store/wk)</th>' +
+    '<th>Order Incr (cases)</th><th>Initial Ship (cases)</th><th>Launch Date</th>' +
     (rampOn ? '<th>Ramp Wks</th>' : '') + '<th>Target WOS</th>' +
     '</tr></thead><tbody>';
   skus.forEach((s, i) => {
@@ -5850,12 +5871,14 @@ function ncRenderSkuTable() {
       '<td style="font-weight:600;">' + sanitize(s.productNumber) + '</td>' +
       '<td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">' + sanitize(s.productName) + '</td>' +
       '<td><input type="number" step="any" min="0" placeholder="—" value="' + (s.ounces != null ? s.ounces : '') + '" oninput="ncUpdateSku(' + i + ',\'ounces\',this.value)"></td>' +
-      '<td>' + inp(i, 'casePack', s.casePack, '1') + '</td>' +
+      '<td>' + inp(i, 'unitsPerCase', s.unitsPerCase, '1') + '</td>' +
+      '<td><input type="number" step="1" min="0" placeholder="0" value="' + (s.innerPack || '') + '" oninput="ncUpdateSku(' + i + ',\'innerPack\',this.value)"></td>' +
+      '<td id="nc-tupc-' + i + '" style="text-align:right; color:#6b7280;">' + ncFmt(ncEffectiveUnitsPerCase(s)) + '</td>' +
       '<td>' + inp(i, 'stores', s.stores, '1') + '</td>' +
       '<td>' + inp(i, 'velocity', s.velocity) + '</td>' +
       '<td>' + inp(i, 'orderIncrement', s.orderIncrement, '1') + '</td>' +
       '<td>' + inp(i, 'initialCases', s.initialCases, '1') + '</td>' +
-      '<td>' + inp(i, 'launchWeek', s.launchWeek, '1') + '</td>' +
+      '<td><input type="date" value="' + sanitize(s.launchDate || '') + '" oninput="ncUpdateSku(' + i + ',\'launchDate\',this.value)" style="width:130px;"></td>' +
       (rampOn ? '<td><input type="number" step="1" min="1" placeholder="auto (' + autoRamp + ')" value="' + (s.rampWeeks != null ? s.rampWeeks : '') + '" oninput="ncUpdateSku(' + i + ',\'rampWeeks\',this.value)"></td>' : '') +
       '<td><input type="number" step="any" min="0" placeholder="default" value="' + (s.targetWos != null ? s.targetWos : '') + '" oninput="ncUpdateSku(' + i + ',\'targetWos\',this.value)"></td>' +
       '</tr>';
@@ -5868,10 +5891,17 @@ const NC_NULLABLE_FIELDS = new Set(['targetWos', 'ounces', 'rampWeeks']);
 function ncUpdateSku(i, field, value) {
   const s = state.newCustomer.skus[i];
   if (!s) return;
-  if (value === '' || value == null) {
+  if (field === 'launchDate') {
+    s.launchDate = value || '';
+  } else if (value === '' || value == null) {
     s[field] = NC_NULLABLE_FIELDS.has(field) ? null : 0;
   } else {
     s[field] = Number(value);
+  }
+  // Live-update the computed Total Units/Case cell without disturbing focus
+  if (field === 'unitsPerCase' || field === 'innerPack') {
+    const cell = document.getElementById('nc-tupc-' + i);
+    if (cell) cell.textContent = ncFmt(ncEffectiveUnitsPerCase(s));
   }
 }
 
@@ -5904,7 +5934,8 @@ function runNcSimulation() {
   const startVal = document.getElementById('nc-start-date').value;
   if (!startVal) { showToast('Set a launch date', 'error'); return; }
   const startDate = new Date(startVal + 'T00:00:00');
-  const horizon = Math.max(4, Math.min(104, parseInt(document.getElementById('nc-horizon').value) || 26));
+  const horizonMonths = Math.max(1, Math.min(36, parseInt(document.getElementById('nc-horizon').value) || 18));
+  const horizon = Math.max(4, Math.min(208, Math.round(horizonMonths * 52 / 12))); // weeks
   const mode = document.getElementById('nc-mode').value;
   const leadTime = Math.max(0, parseInt(document.getElementById('nc-leadtime').value) || 0);
   const defaultWos = Math.max(1, ncToNum(document.getElementById('nc-target-wos').value) || 4);
@@ -5924,11 +5955,11 @@ function runNcSimulation() {
 
   const perSku = [];
   for (const s of nc.skus) {
-    const casePack = s.casePack > 0 ? s.casePack : 1;
+    const casePack = ncEffectiveUnitsPerCase(s);
     const fullWeeklyPosUnits = (s.stores || 0) * (s.velocity || 0);
     const fullWeeklyPosCases = fullWeeklyPosUnits / casePack;
     const targetWos = (s.targetWos != null && s.targetWos > 0) ? s.targetWos : defaultWos;
-    const launchWeek = Math.max(1, Math.round(s.launchWeek || 1));
+    const launchWeek = ncLaunchWeekFor(s, startDate);
     const orderInc = s.orderIncrement > 0 ? s.orderIncrement : 1;
     const rampWeeks = rampOn ? ((s.rampWeeks != null && s.rampWeeks > 0) ? s.rampWeeks : ncDefaultRampWeeks(s, rampBaseWeeks)) : 1;
 
@@ -5996,13 +6027,13 @@ function runNcSimulation() {
   for (const sku of perSku) for (const wk of sku.weeks) monthSet.add(wk.monthKey);
   const months = [...monthSet].sort();
 
-  nc.sim = { perSku, months, mode, startDate: startVal, horizon };
+  nc.sim = { perSku, months, mode, startDate: startVal, horizon, horizonMonths };
   document.getElementById('nc-results-section').classList.remove('hidden');
   ncPopulateWeekSelector();
   ncRenderMonthly();
   ncRenderMonthlyChart();
   ncRenderWeeklyGrid();
-  showToast('Simulation complete — ' + perSku.length + ' SKUs, ' + horizon + ' weeks', 'success');
+  showToast('Simulation complete — ' + perSku.length + ' SKUs, ' + horizonMonths + ' months (' + horizon + ' weeks)', 'success');
 }
 
 // Aggregate a sim into per-month {order, pos} totals, optionally for one SKU.
@@ -6192,12 +6223,13 @@ function exportNewCustomerAssumptions() {
       PRODUCTNAME: s.productName,
       BRAND: s.brand, TYPE: s.type, FORMATION: s.formation,
       OUNCES: blank(s.ounces),
-      CASE_PACK: s.casePack,
+      UNITSPERCASE: s.unitsPerCase,
+      INNERPACKCASE: s.innerPack || 0,
       STORES: s.stores,
       VELOCITY: s.velocity,
       ORDER_INCREMENT: s.orderIncrement,
       INITIAL_SHIPMENT_CASES: s.initialCases,
-      LAUNCH_WEEK: s.launchWeek,
+      LAUNCH_DATE: s.launchDate || '',
       RAMP_WEEKS: blank(s.rampWeeks),   // blank = auto from formation + ounces
       TARGET_WOS: blank(s.targetWos),   // blank = use scenario default
     }));
@@ -6208,7 +6240,7 @@ function exportNewCustomerAssumptions() {
     const g = id => document.getElementById(id);
     const scenarioRows = [
       { SETTING: 'LAUNCH_DATE', VALUE: g('nc-start-date').value },
-      { SETTING: 'HORIZON_WEEKS', VALUE: g('nc-horizon').value },
+      { SETTING: 'HORIZON_MONTHS', VALUE: g('nc-horizon').value },
       { SETTING: 'REPLEN_MODE', VALUE: g('nc-mode').value },
       { SETTING: 'LEAD_TIME_WEEKS', VALUE: g('nc-leadtime').value },
       { SETTING: 'TARGET_WOS', VALUE: g('nc-target-wos').value },
