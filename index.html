@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lodestar — Demand Forecasting</title>
+  <title>Fetch — Demand Forecasting</title>
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:;">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,13 +14,13 @@
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     /* Precision Enterprise Redux — design tokens */
     :root {
-      --red: #b30012; --red-dark: #87000b; --red-tint: #fdeceb; --red-border: #e7c3bf;
+      --red: #8a0010; --red-dark: #660009; --red-tint: #fdeceb; --red-border: #e7c3bf;
       --floor: #f4f1f0; --ink: #1b1c1c; --ink-soft: #2d2d2d; --line: #e3dedd;
     }
     body { font-family: 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: var(--floor); color: var(--ink); line-height: 1.6; font-size: 15px; -webkit-font-smoothing: antialiased; letter-spacing: -0.005em; }
     .hidden { display: none !important; }
-    /* Layout — wide, full-monitor friendly */
-    .container { width: 100%; max-width: 1840px; margin: 0 auto; padding: 0 32px; }
+    /* Layout — full monitor width */
+    .container { width: 100%; max-width: none; margin: 0 auto; padding: 0 32px; }
     .container-sm { max-width: 720px; margin: 0 auto; padding: 0 24px; }
     .container-md { max-width: 960px; margin: 0 auto; padding: 0 24px; }
     .min-h-screen { min-height: 100vh; }
@@ -60,7 +60,7 @@
     .text-blue-600 { color: var(--red); } .text-red-700 { color: #b91c1c; } .text-green-600 { color: #16a34a; } .text-green-800 { color: #166534; } .text-yellow-700 { color: #a16207; }
     /* Borders & Radius */
     .border { border: 1px solid #e5e7eb; } .border-b { border-bottom: 1px solid #e5e7eb; } .border-2 { border-width: 2px; } .border-dashed { border-style: dashed; }
-    .border-gray-300 { border-color: #d1d5db; } .border-red-200 { border-color: #fecaca; } .border-green-200 { border-color: #bbf7d0; } .border-blue-500 { border-color: #b30012; }
+    .border-gray-300 { border-color: #d1d5db; } .border-red-200 { border-color: #fecaca; } .border-green-200 { border-color: #bbf7d0; } .border-blue-500 { border-color: #8a0010; }
     .rounded { border-radius: 4px; } .rounded-md { border-radius: 6px; } .rounded-lg { border-radius: 8px; }
     /* Interactive */
     .cursor-pointer { cursor: pointer; }
@@ -88,7 +88,7 @@
     .step-head { display: flex; align-items: center; }
     /* Nav — solid Primary Red header */
     .nav { background: var(--red); border-bottom: none; }
-    .nav-inner { max-width: 1840px; margin: 0 auto; padding: 0 32px; height: 60px; display: flex; align-items: center; }
+    .nav-inner { max-width: none; margin: 0 auto; padding: 0 32px; height: 60px; display: flex; align-items: center; }
     .nav, .nav .text-lg, .nav .text-sm, .nav span { color: #fff; }
     .nav .text-gray-500 { color: rgba(255,255,255,0.7); }
     /* Nav buttons: ghost-on-red */
@@ -117,7 +117,7 @@
     table.data-grid td { padding: 9px 16px; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
     table.data-grid tr:hover td { background: #f9fafb; }
     table.data-grid input[type="number"] { width: 80px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; text-align: right; font-family: inherit; }
-    table.data-grid input[type="number"]:focus { outline: none; border-color: #b30012; box-shadow: 0 0 0 1px #b30012; }
+    table.data-grid input[type="number"]:focus { outline: none; border-color: #8a0010; box-shadow: 0 0 0 1px #8a0010; }
     .num { text-align: right; font-variant-numeric: tabular-nums; }
     .override-cell input { background: #dcfce7 !important; color: #166534; font-weight: 600; }
     .stat-color { color: #8b5cf6; }
@@ -125,7 +125,7 @@
     /* Grouped 2-row header (main grid only) */
     .data-grid.grouped thead tr.group-row th { position: sticky; top: 0; z-index: 3; height: 26px; padding: 4px 12px; text-align: center; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; border-bottom: 1px solid #e5e7eb; background: #f9fafb; color: #6b7280; }
     .data-grid.grouped thead tr.col-row th { top: 26px; }
-    .data-grid.grouped thead tr.group-row .grp-actuals { background: #fdeceb; color: #87000b; }
+    .data-grid.grouped thead tr.group-row .grp-actuals { background: #fdeceb; color: #660009; }
     .data-grid.grouped thead tr.group-row .grp-forecast { background: #f5f3ff; color: #6d28d9; }
     .data-grid.grouped thead tr.group-row .grp-decision { background: #f0fdf4; color: #15803d; }
     .data-grid .grp-start { border-left: 2px solid #e5e7eb; }
@@ -179,7 +179,7 @@
     /* View toggle */
     .view-toggle { display: inline-flex; border: 1px solid #d1d5db; border-radius: 6px; overflow: hidden; font-size: 12px; }
     .view-toggle button { padding: 4px 14px; background: #fff; border: none; color: #6b7280; cursor: pointer; font-family: inherit; font-size: 12px; }
-    .view-toggle button.active { background: #b30012; color: #fff; }
+    .view-toggle button.active { background: #8a0010; color: #fff; }
     /* Expandable grid rows */
     .expand-btn { background: none; border: none; cursor: pointer; font-size: 14px; padding: 0 4px; color: #6b7280; }
     /* Month exclusion */
@@ -191,7 +191,7 @@
     .weeks-grid .wk-cell { display: flex; align-items: center; gap: 4px; font-size: 11px; }
     .weeks-grid .wk-cell label { color: #6b7280; min-width: 28px; }
     .weeks-grid .wk-cell input { width: 46px; padding: 2px 4px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 12px; text-align: center; font-family: inherit; }
-    .weeks-grid .wk-cell input:focus { outline: none; border-color: #b30012; }
+    .weeks-grid .wk-cell input:focus { outline: none; border-color: #8a0010; }
     .wk-cell.wk-five input { background: #fef3c7; }
     .week-row td { background: #f9fafb; font-size: 12px; color: #6b7280; }
     .week-row td:first-child { padding-left: 28px; }
@@ -252,7 +252,7 @@
     .attr-share { font-size: 11px; color: rgba(255,255,255,0.8); margin-top: 1px; }
     .attr-pct { font-size: 11px; font-weight: 600; color: rgba(255,255,255,0.9); margin-top: 2px; }
     .attr-breadcrumb { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; }
-    .attr-breadcrumb span { color: #b30012; cursor: pointer; text-decoration: underline; }
+    .attr-breadcrumb span { color: #8a0010; cursor: pointer; text-decoration: underline; }
     .attr-breadcrumb span.current { color: #374151; cursor: default; text-decoration: none; font-weight: 600; }
   </style>
 </head>
@@ -268,10 +268,10 @@
 
   <!-- ===== UPLOAD VIEW ===== -->
   <div id="upload-view" class="min-h-screen flex flex-col">
-    <nav class="nav"><div class="nav-inner"><span class="text-lg font-semibold">Lodestar</span></div></nav>
+    <nav class="nav"><div class="nav-inner"><span class="text-lg font-semibold">Fetch</span></div></nav>
     <div class="flex-1 flex items-center justify-center">
       <div class="container-md" style="padding-top:40px; padding-bottom:40px;">
-        <h1 class="text-3xl font-bold text-center mb-2">Lodestar</h1>
+        <h1 class="text-3xl font-bold text-center mb-2">Fetch</h1>
         <p class="text-gray-500 text-center mb-8">Upload your Excel file to get started. Everything runs in your browser.</p>
 
         <div class="card p-4 mb-6" style="background:#f9fafb">
@@ -334,9 +334,9 @@
   <!-- ===== DASHBOARD VIEW ===== -->
   <div id="dashboard-view" class="min-h-screen hidden">
     <nav class="nav">
-      <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
+      <div class="nav-inner justify-between" style="margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
-          <span class="text-lg font-semibold">Lodestar</span>
+          <span class="text-lg font-semibold">Fetch</span>
           <div class="page-toggle">
             <button class="active" onclick="showForecastView()">Forecast</button>
             <button onclick="showNewCustomerView()">New Customer</button>
@@ -453,7 +453,7 @@
             <div class="card p-4" id="top-items-section">
               <div class="flex justify-between items-center" style="cursor:pointer;" onclick="toggleTopItems()">
                 <h2 class="text-sm font-semibold text-gray-700"><span id="top-items-arrow">&#9660;</span> Top Items — Last 3 Mo</h2>
-                <button id="back-to-all-btn" class="hidden" onclick="event.stopPropagation(); resetFilters()" style="background:none; font-size:12px; color:#b30012; text-decoration:underline; border:none; cursor:pointer;">← Back</button>
+                <button id="back-to-all-btn" class="hidden" onclick="event.stopPropagation(); resetFilters()" style="background:none; font-size:12px; color:#8a0010; text-decoration:underline; border:none; cursor:pointer;">← Back</button>
               </div>
               <div id="top-items-content" class="mt-2">
                 <div class="grid-container" style="max-height:280px">
@@ -634,7 +634,7 @@
             <div>
               <div class="flex justify-between items-center">
                 <label class="label" style="margin-bottom:0">Promo / Outlier Tags</label>
-                <button onclick="autoDetectOutliers()" style="background:none; font-size:11px; color:#b30012; text-decoration:underline; border:none; cursor:pointer;">Auto-detect</button>
+                <button onclick="autoDetectOutliers()" style="background:none; font-size:11px; color:#8a0010; text-decoration:underline; border:none; cursor:pointer;">Auto-detect</button>
               </div>
               <p class="text-xs text-gray-400 mt-1">Click <strong>+</strong> in Tag column: Promo(P) → Outlier(!) → Remove. Promo months apply lift to future promo windows. Outliers are deweighted in baseline.</p>
             </div>
@@ -675,9 +675,9 @@
   <!-- ===== DEFINITIONS VIEW ===== -->
   <div id="definitions-view" class="min-h-screen hidden">
     <nav class="nav">
-      <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
+      <div class="nav-inner justify-between" style="margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
-          <span class="text-lg font-semibold">Lodestar</span>
+          <span class="text-lg font-semibold">Fetch</span>
           <div class="page-toggle">
             <button onclick="showForecastView()">Forecast</button>
             <button onclick="showNewCustomerView()">New Customer</button>
@@ -690,7 +690,7 @@
       </div>
     </nav>
 
-    <div class="container py-6" style="max-width:1280px;">
+    <div class="container py-6">
       <h1 class="text-2xl font-bold mb-6" style="color:#111827;">Definitions &amp; Reference</h1>
 
       <!-- Forecast Methods -->
@@ -861,9 +861,9 @@
   <!-- ===== NEW CUSTOMER VIEW ===== -->
   <div id="new-customer-view" class="min-h-screen hidden">
     <nav class="nav">
-      <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
+      <div class="nav-inner justify-between" style="margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
-          <span class="text-lg font-semibold">Lodestar</span>
+          <span class="text-lg font-semibold">Fetch</span>
           <div class="page-toggle">
             <button onclick="showForecastView()">Forecast</button>
             <button class="active" onclick="showNewCustomerView()">New Customer</button>
@@ -3722,7 +3722,7 @@ function renderChart(rows) {
 
   const labels = chartRows.map(r => fmtTimeKey(r.month));
   const datasets = [
-    { label: 'POS', data: chartRows.map(r=>r.posCases), borderColor: '#b30012', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
+    { label: 'POS', data: chartRows.map(r=>r.posCases), borderColor: '#8a0010', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Invoice', data: chartRows.map(r=>r.invoiceCases), borderColor: '#14b8a6', borderWidth: 2, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Orders', data: chartRows.map(r=>r.orderCases), borderColor: '#9ca3af', borderWidth: 1.5, pointRadius: 0, tension: 0.1, spanGaps: true },
     { label: 'Existing Fcst', data: chartRows.map(r=>r.existingForecast), borderColor: '#f97316', borderWidth: 2, borderDash: [6,3], pointRadius: 0, tension: 0.1, spanGaps: true },
@@ -4692,7 +4692,7 @@ function renderRiskOppFlags(data) {
     opportunity: { bg: '#f0fdf4', border: '#bbf7d0', color: '#16a34a', label: 'Opportunity' },
     risk: { bg: '#fef2f2', border: '#fecaca', color: '#dc2626', label: 'Risk' },
     destocking: { bg: '#fff7ed', border: '#fed7aa', color: '#ea580c', label: 'Destocking' },
-    stocking: { bg: '#fdeceb', border: '#bfdbfe', color: '#b30012', label: 'Stocking' }
+    stocking: { bg: '#fdeceb', border: '#bfdbfe', color: '#8a0010', label: 'Stocking' }
   };
   // Table header
   var html = '<table style="width:100%;border-collapse:collapse;font-size:12px;">' +
@@ -4854,7 +4854,7 @@ function renderAnalyticsFilterBar() {
   bar.classList.remove('hidden');
   bar.style.display = 'flex';
   bar.innerHTML = '<span>' + parts.join(' &middot; ') + '</span>' +
-    '<button onclick="analyticsSelection={customer:null,brand:null,type:null};renderAnalytics()" style="background:none;border:none;color:#b30012;font-size:12px;cursor:pointer;text-decoration:underline;">Clear filters</button>';
+    '<button onclick="analyticsSelection={customer:null,brand:null,type:null};renderAnalytics()" style="background:none;border:none;color:#8a0010;font-size:12px;cursor:pointer;text-decoration:underline;">Clear filters</button>';
 }
 
 function renderAnalyticsExcludeMonths() {
@@ -5012,7 +5012,7 @@ function renderBreakdown(containerId, items, dimension) {
 // ============================================================
 // ITEM ATTRIBUTION — Brand > Type > Formation drill-down
 // ============================================================
-const ATTR_COLORS = ['#1e3a5f','#b30012','#b30012','#60a5fa','#93c5fd','#7c3aed','#8b5cf6','#a78bfa','#0d9488','#14b8a6','#2dd4bf','#d97706','#f59e0b','#fbbf24','#dc2626','#ef4444'];
+const ATTR_COLORS = ['#1e3a5f','#8a0010','#8a0010','#60a5fa','#93c5fd','#7c3aed','#8b5cf6','#a78bfa','#0d9488','#14b8a6','#2dd4bf','#d97706','#f59e0b','#fbbf24','#dc2626','#ef4444'];
 let attrDrillState = { level: 'brand', brand: null, type: null };
 // Cross-filter state for analytics: clicking a breakdown bar filters the other sections
 let analyticsSelection = { customer: null, brand: null, type: null };
@@ -6322,7 +6322,7 @@ function ncRenderMonthlyChart() {
   ncMonthlyChart = new Chart(ctx, {
     type: 'bar',
     data: { labels, datasets: [
-      { label: 'Order Cases (shipments)', data: order, backgroundColor: '#b30012' },
+      { label: 'Order Cases (shipments)', data: order, backgroundColor: '#8a0010' },
       { label: 'POS Cases (consumer)', data: pos, backgroundColor: '#e7b8b3' },
     ] },
     options: {
@@ -6355,7 +6355,7 @@ function ncRenderWeeklyChart(sku) {
     type: 'line',
     data: { labels, datasets: [
       { label: 'On-Hand Inventory (cases)', data: onHand, borderColor: '#cf6a64', backgroundColor: 'rgba(179,0,18,0.10)', fill: true, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
-      { label: 'POS Cases', data: pos, borderColor: '#b30012', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'POS Cases', data: pos, borderColor: '#8a0010', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
       { label: 'Ship Cases', data: ship, borderColor: '#1b1c1c', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
       { label: 'Weeks of Supply', data: wos, borderColor: '#906f6b', borderWidth: 1.5, borderDash: [5, 4], tension: 0.2, pointRadius: 0, yAxisID: 'y1' },
     ] },
