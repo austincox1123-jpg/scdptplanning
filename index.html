@@ -3862,12 +3862,12 @@ function renderChart(rows) {
       const x = scales.x.getPixelForValue(fcStartIdx);
       if (x == null || isNaN(x)) return;
       ctx.save();
-      ctx.fillStyle = 'rgba(138,0,16,0.045)';
+      ctx.fillStyle = 'rgba(100,116,139,0.07)';
       ctx.fillRect(x, chartArea.top, chartArea.right - x, chartArea.bottom - chartArea.top);
-      ctx.strokeStyle = 'rgba(138,0,16,0.35)';
+      ctx.strokeStyle = 'rgba(71,85,105,0.45)';
       ctx.lineWidth = 1; ctx.setLineDash([4, 3]);
       ctx.beginPath(); ctx.moveTo(x, chartArea.top); ctx.lineTo(x, chartArea.bottom); ctx.stroke();
-      ctx.setLineDash([]); ctx.fillStyle = 'rgba(138,0,16,0.55)';
+      ctx.setLineDash([]); ctx.fillStyle = 'rgba(71,85,105,0.7)';
       ctx.font = '600 10px Inter, sans-serif'; ctx.textAlign = 'left';
       ctx.fillText('FORECAST', x + 6, chartArea.top + 12);
       ctx.restore();
@@ -6445,8 +6445,8 @@ function ncRenderMonthlyChart() {
   ncMonthlyChart = new Chart(ctx, {
     type: 'bar',
     data: { labels, datasets: [
-      { label: 'Order Cases (shipments)', data: order, backgroundColor: '#8a0010' },
-      { label: 'POS Cases (consumer)', data: pos, backgroundColor: '#e7b8b3' },
+      { label: 'Order Cases (shipments)', data: order, backgroundColor: '#2563eb' },
+      { label: 'POS Cases (consumer)', data: pos, backgroundColor: '#8a0010' },
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
@@ -6477,10 +6477,10 @@ function ncRenderWeeklyChart(sku) {
   ncWeeklyChart = new Chart(ctx, {
     type: 'line',
     data: { labels, datasets: [
-      { label: 'On-Hand Inventory (cases)', data: onHand, borderColor: '#8a0010', backgroundColor: 'rgba(138,0,16,0.13)', fill: true, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'On-Hand Inventory (cases)', data: onHand, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.15)', fill: true, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
       { label: 'POS Cases', data: pos, borderColor: '#8a0010', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
-      { label: 'Ship Cases', data: ship, borderColor: '#1b1c1c', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
-      { label: 'Weeks of Supply', data: wos, borderColor: '#906f6b', borderWidth: 1.5, borderDash: [5, 4], tension: 0.2, pointRadius: 0, yAxisID: 'y1' },
+      { label: 'Ship Cases', data: ship, borderColor: '#2563eb', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'Weeks of Supply', data: wos, borderColor: '#7c3aed', borderWidth: 1.5, borderDash: [5, 4], tension: 0.2, pointRadius: 0, yAxisID: 'y1' },
     ] },
     options: {
       responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
