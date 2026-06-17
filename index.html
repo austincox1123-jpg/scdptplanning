@@ -9,12 +9,12 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" crossorigin="anonymous"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; color: #111827; line-height: 1.5; }
+    body { font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, Arial, -apple-system, BlinkMacSystemFont, sans-serif; background: #f9fafb; color: #111827; line-height: 1.6; font-size: 15px; -webkit-font-smoothing: antialiased; }
     .hidden { display: none !important; }
-    /* Layout */
-    .container { max-width: 1600px; margin: 0 auto; padding: 0 16px; }
-    .container-sm { max-width: 672px; margin: 0 auto; padding: 0 16px; }
-    .container-md { max-width: 896px; margin: 0 auto; padding: 0 16px; }
+    /* Layout — wide, full-monitor friendly */
+    .container { width: 100%; max-width: 1840px; margin: 0 auto; padding: 0 32px; }
+    .container-sm { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+    .container-md { max-width: 960px; margin: 0 auto; padding: 0 24px; }
     .min-h-screen { min-height: 100vh; }
     .flex { display: flex; }
     .flex-col { flex-direction: column; }
@@ -41,7 +41,7 @@
     .mb-1 { margin-bottom: 4px; } .mb-2 { margin-bottom: 8px; } .mb-3 { margin-bottom: 12px; } .mb-4 { margin-bottom: 16px; } .mb-6 { margin-bottom: 24px; } .mb-8 { margin-bottom: 32px; }
     .mt-2 { margin-top: 8px; } .mt-4 { margin-top: 16px; } .mt-6 { margin-top: 24px; } .ml-2 { margin-left: 8px; }
     /* Typography */
-    .text-xs { font-size: 12px; line-height: 16px; } .text-sm { font-size: 14px; line-height: 20px; } .text-base { font-size: 16px; } .text-lg { font-size: 18px; line-height: 28px; } .text-xl { font-size: 20px; } .text-2xl { font-size: 24px; line-height: 32px; } .text-3xl { font-size: 30px; line-height: 36px; }
+    .text-xs { font-size: 12px; line-height: 18px; } .text-sm { font-size: 14px; line-height: 22px; } .text-base { font-size: 16px; line-height: 24px; } .text-lg { font-size: 18px; line-height: 28px; } .text-xl { font-size: 21px; line-height: 30px; } .text-2xl { font-size: 25px; line-height: 34px; } .text-3xl { font-size: 31px; line-height: 40px; }
     .font-medium { font-weight: 500; } .font-semibold { font-weight: 600; } .font-bold { font-weight: 700; }
     .font-mono { font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace; }
     .uppercase { text-transform: uppercase; } .tracking-wide { letter-spacing: 0.05em; }
@@ -71,12 +71,12 @@
     .select-sm { padding: 6px 28px 6px 12px; }
     .filter-group { flex: 1 1 0%; min-width: 140px; }
     .filter-group-lg { flex: 1 1 0%; min-width: 200px; }
-    .label { display: block; font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 4px; }
+    .label { display: block; font-size: 12px; font-weight: 500; color: #6b7280; margin-bottom: 6px; letter-spacing: 0.01em; }
     /* Cards */
-    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; }
     /* Nav */
     .nav { border-bottom: 1px solid #e5e7eb; background: #fff; }
-    .nav-inner { max-width: 1280px; margin: 0 auto; padding: 0 16px; height: 56px; display: flex; align-items: center; }
+    .nav-inner { max-width: 1840px; margin: 0 auto; padding: 0 32px; height: 60px; display: flex; align-items: center; }
     /* Loading overlay */
     .loading-overlay { position: fixed; inset: 0; background: rgba(255,255,255,0.85); display: flex; align-items: center; justify-content: center; z-index: 100; }
     .spinner { width: 40px; height: 40px; border: 3px solid #e5e7eb; border-top-color: #2563eb; border-radius: 50%; animation: spin 0.7s linear infinite; }
@@ -94,8 +94,8 @@
     /* Data grid */
     .grid-container { max-height: 450px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
     table.data-grid { border-collapse: collapse; width: 100%; font-size: 13px; }
-    table.data-grid th { background: #f9fafb; position: sticky; top: 0; z-index: 1; text-align: left; padding: 8px 12px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
-    table.data-grid td { padding: 6px 12px; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
+    table.data-grid th { background: #f9fafb; position: sticky; top: 0; z-index: 1; text-align: left; padding: 10px 16px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
+    table.data-grid td { padding: 9px 16px; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
     table.data-grid tr:hover td { background: #f9fafb; }
     table.data-grid input[type="number"] { width: 80px; padding: 2px 6px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; text-align: right; font-family: inherit; }
     table.data-grid input[type="number"]:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 0 1px #2563eb; }
@@ -316,7 +316,7 @@
   <!-- ===== DASHBOARD VIEW ===== -->
   <div id="dashboard-view" class="min-h-screen hidden">
     <nav class="nav">
-      <div class="nav-inner justify-between" style="max-width:1600px; margin:0 auto; padding:0 16px;">
+      <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
           <span class="text-lg font-semibold">Sales Forecast</span>
           <div class="page-toggle">
@@ -657,7 +657,7 @@
   <!-- ===== DEFINITIONS VIEW ===== -->
   <div id="definitions-view" class="min-h-screen hidden">
     <nav class="nav">
-      <div class="nav-inner justify-between" style="max-width:1600px; margin:0 auto; padding:0 16px;">
+      <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
           <span class="text-lg font-semibold">Sales Forecast</span>
           <div class="page-toggle">
@@ -672,7 +672,7 @@
       </div>
     </nav>
 
-    <div class="container py-6" style="max-width:960px;">
+    <div class="container py-6" style="max-width:1280px;">
       <h1 class="text-2xl font-bold mb-6" style="color:#111827;">Definitions &amp; Reference</h1>
 
       <!-- Forecast Methods -->
@@ -843,7 +843,7 @@
   <!-- ===== NEW CUSTOMER VIEW ===== -->
   <div id="new-customer-view" class="min-h-screen hidden">
     <nav class="nav">
-      <div class="nav-inner justify-between" style="max-width:1600px; margin:0 auto; padding:0 16px;">
+      <div class="nav-inner justify-between" style="max-width:1840px; margin:0 auto; padding:0 32px;">
         <div class="flex items-center">
           <span class="text-lg font-semibold">Sales Forecast</span>
           <div class="page-toggle">
@@ -858,7 +858,7 @@
       </div>
     </nav>
 
-    <div class="container py-6" style="max-width:1400px;">
+    <div class="container py-6">
       <h1 class="text-2xl font-bold mb-1" style="color:#111827;">New Customer Forecast Builder</h1>
       <p class="text-sm text-gray-500 mb-6">Build a bottom-up launch forecast from store counts and velocity, simulate weekly inventory &amp; replenishment, then export or feed monthly projections into the main engine. Everything runs in your browser — nothing is saved.</p>
 
