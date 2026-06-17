@@ -20,7 +20,7 @@
     body { font-family: 'Inter', 'Segoe UI', Roboto, 'Helvetica Neue', Helvetica, Arial, sans-serif; background: var(--floor); color: var(--ink); line-height: 1.6; font-size: 15px; -webkit-font-smoothing: antialiased; letter-spacing: -0.005em; }
     .hidden { display: none !important; }
     /* Layout — full monitor width */
-    .container { width: 100%; max-width: none; margin: 0 auto; padding: 0 32px; }
+    .container { width: 100%; max-width: 1600px; margin: 0 auto; padding: 0 32px; }
     .container-sm { max-width: 720px; margin: 0 auto; padding: 0 24px; }
     .container-md { max-width: 960px; margin: 0 auto; padding: 0 24px; }
     .min-h-screen { min-height: 100vh; }
@@ -85,7 +85,7 @@
     .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; }
     /* Red KPI strip (under nav, Forecast tab) */
     .kpi-strip { background: var(--red-dark); color: #fff; }
-    .kpi-strip-inner { max-width: none; margin: 0 auto; padding: 10px 32px; display: flex; align-items: center; gap: 32px; }
+    .kpi-strip-inner { max-width: 1600px; margin: 0 auto; padding: 10px 32px; display: flex; align-items: center; gap: 32px; }
     .kpi-strip-title { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255,255,255,0.72); white-space: nowrap; }
     .kpi-items { display: flex; gap: 36px; flex-wrap: wrap; }
     .kpi-item { display: flex; align-items: baseline; gap: 8px; }
@@ -111,13 +111,13 @@
     .stat-big { font-size: 30px; font-weight: 800; color: var(--ink); letter-spacing: -0.02em; }
     .stat-lbl { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #9a8e8c; margin-top: 2px; }
     .app-footer { border-top: 1px solid var(--line); margin-top: 8px; }
-    .app-footer-inner { display: flex; justify-content: space-between; align-items: center; padding: 18px 32px; font-size: 12px; color: #8a807d; flex-wrap: wrap; gap: 12px; }
+    .app-footer-inner { max-width: 1600px; margin: 0 auto; display: flex; justify-content: space-between; align-items: center; padding: 18px 32px; font-size: 12px; color: #8a807d; flex-wrap: wrap; gap: 12px; }
     .app-footer a { color: #8a807d; text-decoration: none; margin-left: 18px; }
     .app-footer a:hover { color: var(--red); }
     .foot-dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; background: var(--red); margin-right: 8px; }
     /* Nav — solid Primary Red header */
     .nav { background: var(--red); border-bottom: none; }
-    .nav-inner { max-width: none; margin: 0 auto; padding: 0 32px; height: 60px; display: flex; align-items: center; }
+    .nav-inner { max-width: 1600px; margin: 0 auto; padding: 0 32px; height: 60px; display: flex; align-items: center; }
     .nav, .nav .text-lg, .nav .text-sm, .nav span { color: #fff; }
     .nav .text-gray-500 { color: rgba(255,255,255,0.7); }
     /* Nav buttons: ghost-on-red */
