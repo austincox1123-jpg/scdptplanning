@@ -816,7 +816,16 @@
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Replenishment: POS-Fill</div>
-            <div style="font-size:13px; color:#4b5563; line-height:1.6;">A simpler 1:1 mode — each week replaces exactly what sold through (rounded up to the Order Increment). Inventory stays lean; useful for steady-state sell-through rather than pipeline building. A <strong>Replenishment Start Date</strong> sets when 1:1 ordering begins: before that week the launch shipment alone carries demand (no replenishment orders), and from the trigger week onward each week's sell-through is reordered. Defaults to the launch date (replenish immediately).</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">A simpler 1:1 mode — each week replaces exactly what sold through. Inventory stays lean; useful for steady-state sell-through rather than pipeline building. A <strong>Replenishment Start Date</strong> sets when 1:1 ordering begins: before that week the launch shipment alone carries demand (no replenishment orders), and from the trigger week onward each week's sell-through is reordered. Defaults to the launch date (replenish immediately).</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Order Rounding &amp; Minimum Presentation</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;"><strong>Round Orders To</strong> controls the order multiple: <strong>Whole Cases</strong> rounds each replenishment up to a full case, or <strong>Full Layers</strong> rounds up to the SKU's <strong>Cases/Layer</strong>. <strong>Min Presentation (eaches)</strong> is a per-SKU shelf floor — the model keeps at least that many units' worth of cases in position, applied <em>before</em> the WOS target, so newly-launched SKUs hold appropriate on-shelf stock even when raw demand is low.</div>
+          </div>
+          <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
+            <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Sell-Through (ST%)</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">Sell-through measures how much of the on-shelf inventory sells each period: <strong>ST% = POS Cases ÷ On-Hand Available</strong>. It appears per week in the weekly table and per month in the Sell-Through section. Set <strong>Min Weekly ST%</strong> / <strong>Min Monthly ST%</strong> to flag (red) any period selling through below your target — low ST% signals overstock relative to demand. The weekly chart's <strong>month exclude chips</strong> let you drop the launch load-in months so the chart autoscales to steady-state trends.</div>
+            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">Weekly ST% = Weekly POS Cases / On-Hand Available  ·  Monthly ST% = Σ POS / Σ Available</div>
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Assumptions (round-trip)</div>
@@ -856,7 +865,7 @@
       <!-- Step 1: SKU Master upload -->
       <div class="card p-6 mb-6">
         <h2 class="text-lg font-semibold mb-1" style="color:#111827;">1. SKU Master</h2>
-        <p class="text-xs text-gray-500 mb-3">Upload a SKU list for the new customer. Required column: <span class="col-tag">PRODUCTNUMBER</span>. Optional: <span class="col-tag">PRODUCTNAME</span> <span class="col-tag">BRAND</span> <span class="col-tag">TYPE</span> <span class="col-tag">FORMATION</span> <span class="col-tag">OUNCES</span> <span class="col-tag">UNITSPERCASE</span> <span class="col-tag">INNERPACKCASE</span> <span class="col-tag">STORES</span> <span class="col-tag">VELOCITY</span> <span class="col-tag">ORDER_INCREMENT</span> <span class="col-tag">INITIAL_SHIPMENT_CASES</span> <span class="col-tag">LAUNCH_WEEK</span> <span class="col-tag">RAMP_WEEKS</span> <span class="col-tag">TARGET_WOS</span><br><span style="color:#6b7280;">LAUNCH_WEEK is a <strong>date</strong> (when the SKU starts selling). INNERPACKCASE is optional — if &gt; 0, total units per case = INNERPACKCASE × UNITSPERCASE. Resuming an earlier scenario? Re-upload the <strong>Export Assumptions</strong> file here to reload all your edited values.</span></p>
+        <p class="text-xs text-gray-500 mb-3">Upload a SKU list for the new customer. Required column: <span class="col-tag">PRODUCTNUMBER</span>. Optional: <span class="col-tag">PRODUCTNAME</span> <span class="col-tag">BRAND</span> <span class="col-tag">TYPE</span> <span class="col-tag">FORMATION</span> <span class="col-tag">OUNCES</span> <span class="col-tag">UNITSPERCASE</span> <span class="col-tag">INNERPACKCASE</span> <span class="col-tag">CASESPERLAYER</span> <span class="col-tag">MIN_PRESENTATION</span> <span class="col-tag">STORES</span> <span class="col-tag">VELOCITY</span> <span class="col-tag">INITIAL_SHIPMENT_CASES</span> <span class="col-tag">LAUNCH_WEEK</span> <span class="col-tag">RAMP_WEEKS</span> <span class="col-tag">TARGET_WOS</span><br><span style="color:#6b7280;">LAUNCH_WEEK is a <strong>date</strong> (when the SKU starts selling). INNERPACKCASE is optional — if &gt; 0, total units per case = INNERPACKCASE × UNITSPERCASE. Resuming an earlier scenario? Re-upload the <strong>Export Assumptions</strong> file here to reload all your edited values.</span></p>
         <div class="flex gap-4 items-end flex-wrap">
           <div>
             <label class="label">New Customer Name</label>
@@ -907,6 +916,13 @@
               <label class="label">Replenishment Start Date</label>
               <input type="date" id="nc-replen-start" class="select-field" style="width:160px;">
             </div>
+            <div>
+              <label class="label">Round Orders To</label>
+              <select id="nc-round-mode" class="select-field" style="width:180px;">
+                <option value="case">Whole Cases (Units/Case)</option>
+                <option value="layer">Full Layers (Cases/Layer)</option>
+              </select>
+            </div>
           </div>
           <div class="flex flex-wrap gap-4 items-end" style="border-top:1px solid #f3f4f6; padding-top:12px;">
             <div class="checkbox-row" style="padding-bottom:6px;">
@@ -942,29 +958,52 @@
 
       <!-- Step 3: Results (hidden until simulation runs) -->
       <div id="nc-results-section" class="hidden">
-        <div class="card p-6 mb-6">
-          <div class="flex justify-between items-center mb-3">
-            <h2 class="text-lg font-semibold" style="color:#111827;">3. Monthly Projection Preview</h2>
-            <div class="flex gap-2">
-              <button onclick="exportNewCustomerForecast()" class="px-4 py-2 btn-outline" style="font-size:13px;">Export Excel</button>
-              <button onclick="applyNewCustomerToEngine()" class="px-4 py-2 btn-green" style="font-size:13px;">Apply to Forecast Engine</button>
-            </div>
-          </div>
-          <p class="text-xs text-gray-500 mb-3">Weekly shipments and POS aggregated to calendar months. "Apply to Forecast Engine" adds this customer to the main Forecast tab with these monthly order projections as its saved forecast.</p>
-          <div style="height:260px; position:relative; margin-bottom:18px;"><canvas id="nc-monthly-chart"></canvas></div>
-          <div style="overflow-x:auto;">
-            <table class="data-grid" id="nc-monthly-table"></table>
+        <div class="flex justify-between items-center mb-3">
+          <h2 class="text-xl font-bold" style="color:#111827;">3. Forecast Results</h2>
+          <div class="flex gap-2">
+            <button onclick="exportNewCustomerForecast()" class="px-4 py-2 btn-outline" style="font-size:13px;">Export Excel</button>
+            <button onclick="applyNewCustomerToEngine()" class="px-4 py-2 btn-green" style="font-size:13px;">Apply to Forecast Engine</button>
           </div>
         </div>
 
+        <!-- Weekly (first) -->
         <div class="card p-6 mb-6">
           <div class="flex justify-between items-center mb-3">
             <h2 class="text-lg font-semibold" style="color:#111827;">Weekly Forecast — POS, Shipments &amp; Inventory</h2>
             <select id="nc-week-sku" class="select-field" style="width:280px;" onchange="ncRenderWeeklyGrid()"></select>
           </div>
+          <div class="flex items-center gap-2 mb-2" style="flex-wrap:wrap;">
+            <span class="text-xs text-gray-500">Exclude months from chart (e.g. launch load-in):</span>
+            <span id="nc-exclude-months" class="flex gap-1" style="flex-wrap:wrap;"></span>
+          </div>
           <div style="height:320px; position:relative; margin-bottom:18px;"><canvas id="nc-weekly-chart"></canvas></div>
           <div style="overflow-x:auto; max-height:460px; overflow-y:auto;">
             <table class="data-grid" id="nc-weekly-table"></table>
+          </div>
+        </div>
+
+        <!-- Sell-Through -->
+        <div class="card p-6 mb-6">
+          <div class="flex justify-between items-center mb-3" style="flex-wrap:wrap; gap:8px;">
+            <h2 class="text-lg font-semibold" style="color:#111827;">Sell-Through (ST% = POS Cases / On-Hand)</h2>
+            <div class="flex gap-3 items-end">
+              <div><label class="label">Min Weekly ST%</label><input type="number" id="nc-min-st-week" value="0" min="0" max="100" class="select-field select-sm" style="width:90px;" onchange="ncRenderResults()"></div>
+              <div><label class="label">Min Monthly ST%</label><input type="number" id="nc-min-st-month" value="0" min="0" max="100" class="select-field select-sm" style="width:90px;" onchange="ncRenderResults()"></div>
+            </div>
+          </div>
+          <p class="text-xs text-gray-500 mb-3">Weekly ST% appears in the table above. Months below the minimum are flagged red. Set 0 to disable flagging.</p>
+          <div style="overflow-x:auto;">
+            <table class="data-grid" id="nc-st-table"></table>
+          </div>
+        </div>
+
+        <!-- Monthly (last) -->
+        <div class="card p-6 mb-6">
+          <h2 class="text-lg font-semibold mb-2" style="color:#111827;">Monthly Projection Preview</h2>
+          <p class="text-xs text-gray-500 mb-3">Weekly shipments and POS aggregated to calendar months. "Apply to Forecast Engine" adds this customer to the main Forecast tab with these monthly order projections as its saved forecast.</p>
+          <div style="height:260px; position:relative; margin-bottom:18px;"><canvas id="nc-monthly-chart"></canvas></div>
+          <div style="overflow-x:auto;">
+            <table class="data-grid" id="nc-monthly-table"></table>
           </div>
         </div>
       </div>
@@ -1005,8 +1044,9 @@ const state = {
   // New Customer launch-forecast builder (self-contained, no persistence)
   newCustomer: {
     customerName: '',
-    skus: [],        // [{ productNumber, productName, brand, type, formation, ounces, unitsPerCase, innerPack, stores, velocity, orderIncrement, initialCases, launchDate, rampWeeks, targetWos }]
+    skus: [],        // per-SKU assumptions (see ncMakeSku)
     sim: null,       // { perSku: [{ key, productNumber, productName, weeks:[...] }], months: [...] }
+    excludedMonths: new Set(), // month keys excluded from the weekly chart (e.g. launch load-in)
     _initialized: false,
   },
 };
@@ -5573,7 +5613,8 @@ const NC_SKU_COLS = {
   'INNERPACKCASE':'innerPack','INNER_PACK_CASE':'innerPack','INNER_PACK':'innerPack','INNER':'innerPack','INNERS':'innerPack',
   'STORES':'stores','STORE_COUNT':'stores','NUM_STORES':'stores','DOORS':'stores',
   'VELOCITY':'velocity','UNITS_PER_STORE_PER_WEEK':'velocity','UPSPW':'velocity','RATE_OF_SALE':'velocity',
-  'ORDER_INCREMENT':'orderIncrement','CASE_MULTIPLE':'orderIncrement','MOQ_CASES':'orderIncrement',
+  'CASESPERLAYER':'casesPerLayer','CASES_PER_LAYER':'casesPerLayer','LAYER':'casesPerLayer','ORDER_INCREMENT':'casesPerLayer','CASE_MULTIPLE':'casesPerLayer',
+  'MIN_PRESENTATION':'minPresentationUnits','MIN_PRESENTATION_UNITS':'minPresentationUnits','MIN_PRESENTATION_EACHES':'minPresentationUnits','MIN_EACHES':'minPresentationUnits','MIN_SHELF_UNITS':'minPresentationUnits',
   'INITIAL_SHIPMENT_CASES':'initialCases','INITIAL_CASES':'initialCases','SELL_IN_CASES':'initialCases','PIPELINE_CASES':'initialCases',
   'LAUNCH_WEEK':'launchDate','LAUNCH_DATE':'launchDate','LAUNCH':'launchDate',
   'TARGET_WOS':'targetWos','WOS':'targetWos','WEEKS_OF_SUPPLY':'targetWos',
@@ -5625,7 +5666,8 @@ function parseSkuMasterFile(buffer) {
       innerPack: ncToNum(m.innerPack),
       stores: ncToNum(m.stores),
       velocity: ncToNum(m.velocity),
-      orderIncrement: ncToNum(m.orderIncrement),
+      casesPerLayer: ncToNum(m.casesPerLayer),
+      minPresentationUnits: ncToNum(m.minPresentationUnits),
       initialCases: ncToNum(m.initialCases),
       launchDate: ncCellToDateStr(m.launchDate),
       targetWos: ncToNum(m.targetWos),
@@ -5648,6 +5690,9 @@ const NC_SCENARIO_COLS = {
   'VELOCITY_RAMP_ENABLED':'rampEnabled','RAMP_ENABLED':'rampEnabled',
   'START_VELOCITY_PCT':'rampStartPct','START_VELOCITY':'rampStartPct',
   'BASE_RAMP_WEEKS':'rampBaseWeeks',
+  'ROUND_ORDERS_TO':'roundMode','ROUND_MODE':'roundMode',
+  'MIN_WEEKLY_ST_PCT':'minStWeek','MIN_WEEKLY_ST':'minStWeek',
+  'MIN_MONTHLY_ST_PCT':'minStMonth','MIN_MONTHLY_ST':'minStMonth',
 };
 
 // Convert an Excel cell (string ISO date or numeric serial) to a YYYY-MM-DD string.
@@ -5681,6 +5726,7 @@ function ncParseScenarioSheet(wb) {
       if (raw == null || raw === '') continue;
       if (field === 'startDate' || field === 'replenStart') sc[field] = ncCellToDateStr(raw);
       else if (field === 'mode') sc[field] = /pos|fill|1/i.test(String(raw)) ? 'pos_fill' : 'wos';
+      else if (field === 'roundMode') sc[field] = /layer/i.test(String(raw)) ? 'layer' : 'case';
       else if (field === 'rampEnabled') sc[field] = /^(y|yes|true|1|on)/i.test(String(raw).trim());
       else sc[field] = ncToNum(raw);
     }
@@ -5702,6 +5748,9 @@ function ncApplyScenario(sc) {
   if (sc.rampEnabled != null) document.getElementById('nc-ramp-enabled').checked = sc.rampEnabled;
   set('nc-ramp-start-pct', sc.rampStartPct);
   set('nc-ramp-base-weeks', sc.rampBaseWeeks);
+  if (sc.roundMode) document.getElementById('nc-round-mode').value = sc.roundMode;
+  set('nc-min-st-week', sc.minStWeek);
+  set('nc-min-st-month', sc.minStMonth);
   ncRenderConfig();
 }
 
@@ -5715,7 +5764,8 @@ function ncMakeSku(p) {
     innerPack: (p.innerPack != null && p.innerPack > 0) ? p.innerPack : 0, // 0 = no inner structure
     stores: p.stores != null ? p.stores : 0,
     velocity: p.velocity != null ? p.velocity : 0,
-    orderIncrement: (p.orderIncrement != null && p.orderIncrement > 0) ? p.orderIncrement : 1,
+    casesPerLayer: (p.casesPerLayer != null && p.casesPerLayer > 0) ? p.casesPerLayer : 1,
+    minPresentationUnits: (p.minPresentationUnits != null && p.minPresentationUnits > 0) ? p.minPresentationUnits : 0,
     initialCases: p.initialCases != null ? p.initialCases : 0,
     launchDate: p.launchDate || '', // '' = launch on the scenario start date
     targetWos: (p.targetWos != null && p.targetWos > 0) ? p.targetWos : null, // null = use scenario default
@@ -5813,8 +5863,16 @@ function ncHandleFile(file) {
       }
       state.newCustomer.skus = result.skus;
       if (result.scenario) ncApplyScenario(result.scenario);
+      // If every SKU has a launch date, anchor the scenario ship date to the earliest one
+      // (unless a Scenario sheet already supplied an explicit start date).
+      const allLaunch = result.skus.length && result.skus.every(s => s.launchDate);
+      if (allLaunch && !(result.scenario && result.scenario.startDate)) {
+        const earliest = result.skus.map(s => s.launchDate).sort()[0];
+        document.getElementById('nc-start-date').value = earliest;
+      }
       document.getElementById('nc-sku-status').textContent = result.skus.length + ' SKUs loaded' +
         (result.scenario ? ' + scenario' : '') +
+        (allLaunch ? ' · ship date set to earliest launch' : '') +
         (result.errors.length ? ' (' + result.errors.length + ' rows skipped)' : '');
       document.getElementById('nc-config-section').classList.remove('hidden');
       ncRenderSkuTable();
@@ -5837,11 +5895,11 @@ function loadNcDemo() {
   let wk2 = '';
   if (startVal) { const d = new Date(startVal + 'T00:00:00'); wk2 = dateStr(new Date(d.getTime() + 7 * 86400000)); }
   state.newCustomer.skus = [
-    ncMakeSku({ productNumber:'CDF-001', productName:'Premium Canine Dry Kibble 30lb', brand:'Canine', type:'Dry Food', formation:'Kibble', ounces:480, unitsPerCase:1, innerPack:0, stores:1800, velocity:0.8, orderIncrement:1, initialCases:1200, launchDate:'' }),
-    ncMakeSku({ productNumber:'CWF-001', productName:'Canine Gourmet Wet Pate 12pk', brand:'Canine', type:'Wet Food', formation:'Pate', ounces:3.5, unitsPerCase:12, innerPack:0, stores:1800, velocity:6, orderIncrement:5, initialCases:900, launchDate:'' }),
-    ncMakeSku({ productNumber:'CTF-001', productName:'Canine Training Treats Trial 4oz', brand:'Canine', type:'Treat', formation:'Trial Treat', ounces:4, unitsPerCase:4, innerPack:2, stores:1800, velocity:9, orderIncrement:5, initialCases:500, launchDate:'' }),
-    ncMakeSku({ productNumber:'FDF-001', productName:'Feline Indoor Dry Kibble 12lb', brand:'Feline', type:'Dry Food', formation:'Kibble', ounces:192, unitsPerCase:1, innerPack:0, stores:1500, velocity:0.6, orderIncrement:1, initialCases:700, launchDate:wk2 }),
-    ncMakeSku({ productNumber:'FWF-001', productName:'Feline Select Wet Pate 12pk', brand:'Feline', type:'Wet Food', formation:'Pate', ounces:3, unitsPerCase:12, innerPack:0, stores:1500, velocity:5, orderIncrement:5, initialCases:600, launchDate:wk2 }),
+    ncMakeSku({ productNumber:'CDF-001', productName:'Premium Canine Dry Kibble 30lb', brand:'Canine', type:'Dry Food', formation:'Kibble', ounces:480, unitsPerCase:1, innerPack:0, stores:1800, velocity:0.8, casesPerLayer:8, minPresentationUnits:2, initialCases:1200, launchDate:'' }),
+    ncMakeSku({ productNumber:'CWF-001', productName:'Canine Gourmet Wet Pate 12pk', brand:'Canine', type:'Wet Food', formation:'Pate', ounces:3.5, unitsPerCase:12, innerPack:0, stores:1800, velocity:6, casesPerLayer:10, minPresentationUnits:24, initialCases:900, launchDate:'' }),
+    ncMakeSku({ productNumber:'CTF-001', productName:'Canine Training Treats Trial 4oz', brand:'Canine', type:'Treat', formation:'Trial Treat', ounces:4, unitsPerCase:4, innerPack:2, stores:1800, velocity:9, casesPerLayer:12, minPresentationUnits:16, initialCases:500, launchDate:'' }),
+    ncMakeSku({ productNumber:'FDF-001', productName:'Feline Indoor Dry Kibble 12lb', brand:'Feline', type:'Dry Food', formation:'Kibble', ounces:192, unitsPerCase:1, innerPack:0, stores:1500, velocity:0.6, casesPerLayer:8, minPresentationUnits:2, initialCases:700, launchDate:wk2 }),
+    ncMakeSku({ productNumber:'FWF-001', productName:'Feline Select Wet Pate 12pk', brand:'Feline', type:'Wet Food', formation:'Pate', ounces:3, unitsPerCase:12, innerPack:0, stores:1500, velocity:5, casesPerLayer:10, minPresentationUnits:24, initialCases:600, launchDate:wk2 }),
   ];
   document.getElementById('nc-sku-status').textContent = state.newCustomer.skus.length + ' demo SKUs loaded';
   document.getElementById('nc-config-section').classList.remove('hidden');
@@ -5861,8 +5919,8 @@ function ncRenderSkuTable() {
   const baseWeeks = ncToNum(document.getElementById('nc-ramp-base-weeks') ? document.getElementById('nc-ramp-base-weeks').value : null) || 8;
   const inp = (i, field, val, step) => '<input type="number" step="' + (step||'any') + '" min="0" value="' + (val != null ? val : '') + '" oninput="ncUpdateSku(' + i + ',\'' + field + '\',this.value)">';
   let html = '<thead><tr>' +
-    '<th>Product #</th><th>Name</th><th>Ounces</th><th>Units/Case</th><th>Inner/Case</th><th>Total Units/Case</th><th>Stores</th><th>Velocity (u/store/wk)</th>' +
-    '<th>Order Incr (cases)</th><th>Initial Ship (cases)</th><th>Launch Date</th>' +
+    '<th>Product #</th><th>Name</th><th>Ounces</th><th>Units/Case</th><th>Inner/Case</th><th>Total Units/Case</th><th>Cases/Layer</th><th>Min Presentation (eaches)</th><th>Stores</th><th>Velocity (u/store/wk)</th>' +
+    '<th>Initial Ship (cases)</th><th>Launch Date</th>' +
     (rampOn ? '<th>Ramp Wks</th>' : '') + '<th>Target WOS</th>' +
     '</tr></thead><tbody>';
   skus.forEach((s, i) => {
@@ -5874,9 +5932,10 @@ function ncRenderSkuTable() {
       '<td>' + inp(i, 'unitsPerCase', s.unitsPerCase, '1') + '</td>' +
       '<td><input type="number" step="1" min="0" placeholder="0" value="' + (s.innerPack || '') + '" oninput="ncUpdateSku(' + i + ',\'innerPack\',this.value)"></td>' +
       '<td id="nc-tupc-' + i + '" style="text-align:right; color:#6b7280;">' + ncFmt(ncEffectiveUnitsPerCase(s)) + '</td>' +
+      '<td>' + inp(i, 'casesPerLayer', s.casesPerLayer, '1') + '</td>' +
+      '<td><input type="number" step="1" min="0" placeholder="0" value="' + (s.minPresentationUnits || '') + '" oninput="ncUpdateSku(' + i + ',\'minPresentationUnits\',this.value)"></td>' +
       '<td>' + inp(i, 'stores', s.stores, '1') + '</td>' +
       '<td>' + inp(i, 'velocity', s.velocity) + '</td>' +
-      '<td>' + inp(i, 'orderIncrement', s.orderIncrement, '1') + '</td>' +
       '<td>' + inp(i, 'initialCases', s.initialCases, '1') + '</td>' +
       '<td><input type="date" value="' + sanitize(s.launchDate || '') + '" oninput="ncUpdateSku(' + i + ',\'launchDate\',this.value)" style="width:130px;"></td>' +
       (rampOn ? '<td><input type="number" step="1" min="1" placeholder="auto (' + autoRamp + ')" value="' + (s.rampWeeks != null ? s.rampWeeks : '') + '" oninput="ncUpdateSku(' + i + ',\'rampWeeks\',this.value)"></td>' : '') +
@@ -5939,6 +5998,7 @@ function runNcSimulation() {
   const mode = document.getElementById('nc-mode').value;
   const leadTime = Math.max(0, parseInt(document.getElementById('nc-leadtime').value) || 0);
   const defaultWos = Math.max(1, ncToNum(document.getElementById('nc-target-wos').value) || 4);
+  const roundMode = document.getElementById('nc-round-mode').value; // 'case' | 'layer'
 
   // Velocity ramp config
   const rampOn = document.getElementById('nc-ramp-enabled').checked;
@@ -5960,7 +6020,10 @@ function runNcSimulation() {
     const fullWeeklyPosCases = fullWeeklyPosUnits / casePack;
     const targetWos = (s.targetWos != null && s.targetWos > 0) ? s.targetWos : defaultWos;
     const launchWeek = ncLaunchWeekFor(s, startDate);
-    const orderInc = s.orderIncrement > 0 ? s.orderIncrement : 1;
+    // Replenishment rounds up to whole cases, or full layers when "Round Orders To" = Layers
+    const orderInc = (roundMode === 'layer' && s.casesPerLayer > 0) ? s.casesPerLayer : 1;
+    // Minimum shelf presentation (eaches) → a case-level inventory floor applied before WOS
+    const minPresCases = (s.minPresentationUnits > 0) ? s.minPresentationUnits / casePack : 0;
     const rampWeeks = rampOn ? ((s.rampWeeks != null && s.rampWeeks > 0) ? s.rampWeeks : ncDefaultRampWeeks(s, rampBaseWeeks)) : 1;
 
     const arrivals = {}; // week => cases received
@@ -5969,7 +6032,9 @@ function runNcSimulation() {
     let onHand = 0;
     const weeks = [];
     for (let w = 1; w <= horizon; w++) {
-      onHand += arrivals[w] || 0;
+      const received = arrivals[w] || 0;
+      onHand += received;
+      const available = onHand; // on-shelf available this week (after receipts, before sale)
       const active = w >= launchWeek;
       // Ramped velocity: scales from Start Velocity % up to 100% over the SKU's ramp weeks
       const mult = active ? (rampOn ? ncRampMultiplier(w - launchWeek, rampWeeks, rampStartPct) : 1) : 0;
@@ -5982,22 +6047,27 @@ function runNcSimulation() {
       // The initial sell-in is itself a shipment placed in the launch week
       if (w === launchWeek && s.initialCases > 0) placedOrder += s.initialCases;
 
-      if (active) {
-        let replen = 0;
+      // POS-fill holds replenishment until the trigger week; WOS replenishes once active
+      const canOrder = active && (mode === 'wos' || w >= replenStartWeek);
+      if (canOrder) {
+        let onOrder = 0;
+        for (const k in arrivals) { if (parseInt(k) > w) onOrder += arrivals[k]; }
+        let target = 0; // desired inventory position (cases)
         if (mode === 'wos') {
-          let onOrder = 0;
-          for (const k in arrivals) { if (parseInt(k) > w) onOrder += arrivals[k]; }
           // Cover against the next ramp weeks' demand, not just the current week's
           let fwdDemand = 0;
           for (let j = 0; j < (targetWos + leadTime); j++) {
             fwdDemand += fullWeeklyPosCases * (rampOn ? ncRampMultiplier(w - launchWeek + j, rampWeeks, rampStartPct) : 1);
           }
-          const need = fwdDemand - (onHand + onOrder);
-          if (need > 0) replen = roundUpToIncrement(need, orderInc);
-        } else { // pos_fill — replace what sold through, but only on/after the trigger week
-          if (demandCases > 0 && w >= replenStartWeek) replen = roundUpToIncrement(demandCases, orderInc);
+          target = fwdDemand;
+        } else { // pos_fill — replace what sold through this week
+          if (demandCases > 0) target = (onHand + onOrder) + demandCases;
         }
-        if (replen > 0) {
+        // Minimum presentation floor: keep at least min shelf units' worth of cases positioned
+        if (minPresCases > 0) target = Math.max(target, minPresCases);
+        const need = target - (onHand + onOrder);
+        if (need > 0) {
+          const replen = roundUpToIncrement(need, orderInc);
           arrivals[w + leadTime] = (arrivals[w + leadTime] || 0) + replen;
           placedOrder += replen;
         }
@@ -6009,8 +6079,10 @@ function runNcSimulation() {
         posUnits: posUnits,
         posCases: demandCases,
         orderCases: placedOrder,
-        received: arrivals[w] || 0,
+        received: received,
         onHand: onHand,
+        available: available,
+        stPct: available > 0 ? (demandCases / available) : null,  // sell-through = POS / on-hand available
         wos: demandCases > 0 ? onHand / demandCases : (fullWeeklyPosCases > 0 ? onHand / fullWeeklyPosCases : null),
       });
     }
@@ -6027,13 +6099,21 @@ function runNcSimulation() {
   for (const sku of perSku) for (const wk of sku.weeks) monthSet.add(wk.monthKey);
   const months = [...monthSet].sort();
 
-  nc.sim = { perSku, months, mode, startDate: startVal, horizon, horizonMonths };
+  nc.sim = { perSku, months, mode, startDate: startVal, horizon, horizonMonths, roundMode };
   document.getElementById('nc-results-section').classList.remove('hidden');
   ncPopulateWeekSelector();
+  ncRenderExcludeMonths();
+  ncRenderResults();
+  showToast('Simulation complete — ' + perSku.length + ' SKUs, ' + horizonMonths + ' months (' + horizon + ' weeks)', 'success');
+}
+
+// Re-render every results view (weekly grid+chart, sell-through, monthly) from the current sim.
+function ncRenderResults() {
+  if (!state.newCustomer.sim) return;
+  ncRenderWeeklyGrid();   // also renders the weekly chart
+  ncRenderStTable();
   ncRenderMonthly();
   ncRenderMonthlyChart();
-  ncRenderWeeklyGrid();
-  showToast('Simulation complete — ' + perSku.length + ' SKUs, ' + horizonMonths + ' months (' + horizon + ' weeks)', 'success');
 }
 
 // Aggregate a sim into per-month {order, pos} totals, optionally for one SKU.
@@ -6073,6 +6153,54 @@ function ncRenderMonthly() {
   document.getElementById('nc-monthly-table').innerHTML = html;
 }
 
+// Month chips above the weekly chart — click to exclude/include a month from the chart.
+function ncRenderExcludeMonths() {
+  const sim = state.newCustomer.sim;
+  const cont = document.getElementById('nc-exclude-months');
+  if (!sim) { cont.innerHTML = ''; return; }
+  const excl = state.newCustomer.excludedMonths;
+  cont.innerHTML = sim.months.map(mk => {
+    const on = excl.has(mk);
+    const style = on
+      ? 'background:#fee2e2; border:1px solid #fca5a5; color:#b91c1c; text-decoration:line-through;'
+      : 'background:#fff; border:1px solid #d1d5db; color:#374151;';
+    return '<button onclick="ncToggleExcludeMonth(\'' + mk + '\')" style="' + style + ' padding:2px 8px; border-radius:4px; font-size:11px; cursor:pointer;">' + sanitize(fmtMonth(mk)) + '</button>';
+  }).join('');
+}
+
+function ncToggleExcludeMonth(mk) {
+  const excl = state.newCustomer.excludedMonths;
+  if (excl.has(mk)) excl.delete(mk); else excl.add(mk);
+  ncRenderExcludeMonths();
+  ncRenderWeeklyGrid(); // re-renders the chart with the new filter
+}
+
+// Sell-Through summary: monthly ST% = total POS cases / total on-hand available across the month.
+function ncRenderStTable() {
+  const sim = state.newCustomer.sim;
+  const minMonthSt = (ncToNum(document.getElementById('nc-min-st-month').value) || 0) / 100;
+  const agg = new Map(); // monthKey => { pos, avail }
+  for (const sku of sim.perSku) {
+    for (const wk of sku.weeks) {
+      if (!agg.has(wk.monthKey)) agg.set(wk.monthKey, { pos: 0, avail: 0 });
+      const m = agg.get(wk.monthKey);
+      m.pos += wk.posCases; m.avail += (wk.available || 0);
+    }
+  }
+  let html = '<thead><tr><th>Month</th><th style="text-align:right;">POS Cases</th><th style="text-align:right;">On-Hand Available</th><th style="text-align:right;">Sell-Through %</th></tr></thead><tbody>';
+  for (const mk of sim.months) {
+    const m = agg.get(mk) || { pos: 0, avail: 0 };
+    const st = m.avail > 0 ? m.pos / m.avail : null;
+    const low = minMonthSt > 0 && st != null && st < minMonthSt;
+    html += '<tr><td>' + fmtMonth(mk) + '</td>' +
+      '<td style="text-align:right;">' + ncFmt(Math.round(m.pos)) + '</td>' +
+      '<td style="text-align:right;">' + ncFmt(Math.round(m.avail)) + '</td>' +
+      '<td style="text-align:right; ' + (low ? 'color:#b91c1c; font-weight:700;' : 'font-weight:600;') + '">' + (st != null ? (st * 100).toFixed(0) + '%' : '') + (low ? ' ⚠' : '') + '</td></tr>';
+  }
+  html += '</tbody>';
+  document.getElementById('nc-st-table').innerHTML = html;
+}
+
 function ncPopulateWeekSelector() {
   const sel = document.getElementById('nc-week-sku');
   sel.innerHTML = '<option value="__ALL__">All SKUs (total)</option>' +
@@ -6089,14 +6217,15 @@ function ncAggregateWeeks() {
   const weeks = [];
   for (let i = 0; i < n; i++) {
     const base = perSku[0].weeks[i];
-    let posUnits = 0, posCases = 0, orderCases = 0, received = 0, onHand = 0;
+    let posUnits = 0, posCases = 0, orderCases = 0, received = 0, onHand = 0, available = 0;
     for (const sku of perSku) {
       const wk = sku.weeks[i]; if (!wk) continue;
       posUnits += wk.posUnits; posCases += wk.posCases; orderCases += wk.orderCases;
-      received += wk.received; onHand += wk.onHand;
+      received += wk.received; onHand += wk.onHand; available += (wk.available || 0);
     }
     weeks.push({ w: base.w, date: base.date, monthKey: base.monthKey,
-      posUnits, posCases, orderCases, received, onHand,
+      posUnits, posCases, orderCases, received, onHand, available,
+      stPct: available > 0 ? posCases / available : null,
       wos: posCases > 0 ? onHand / posCases : null });
   }
   return { key: '__ALL__', productNumber: 'All SKUs', productName: 'All SKUs', weeks };
@@ -6108,12 +6237,16 @@ function ncRenderWeeklyGrid() {
   const sel = document.getElementById('nc-week-sku');
   const key = sel.value || '__ALL__';
   const sku = (key === '__ALL__') ? ncAggregateWeeks() : (sim.perSku.find(s => s.key === key) || sim.perSku[0]);
+  const minWeekSt = (ncToNum(document.getElementById('nc-min-st-week').value) || 0) / 100;
+  const excluded = state.newCustomer.excludedMonths;
   let html = '<thead><tr><th>Wk</th><th>Week Of</th><th>Month</th>' +
     '<th style="text-align:right;">POS Units</th><th style="text-align:right;">POS Cases</th>' +
     '<th style="text-align:right;">Ship Cases</th><th style="text-align:right;">Received</th>' +
-    '<th style="text-align:right;">On Hand</th><th style="text-align:right;">WOS</th></tr></thead><tbody>';
+    '<th style="text-align:right;">On Hand</th><th style="text-align:right;">ST%</th><th style="text-align:right;">WOS</th></tr></thead><tbody>';
   for (const wk of sku.weeks) {
-    html += '<tr>' +
+    const isExcl = excluded.has(wk.monthKey);
+    const stLow = minWeekSt > 0 && wk.stPct != null && wk.stPct < minWeekSt;
+    html += '<tr' + (isExcl ? ' style="opacity:0.4;"' : '') + '>' +
       '<td>' + wk.w + '</td>' +
       '<td>' + wk.date + '</td>' +
       '<td>' + fmtMonth(wk.monthKey) + '</td>' +
@@ -6122,6 +6255,7 @@ function ncRenderWeeklyGrid() {
       '<td style="text-align:right; font-weight:600;">' + ncFmt(Math.round(wk.orderCases)) + '</td>' +
       '<td style="text-align:right; color:#6b7280;">' + (wk.received ? ncFmt(Math.round(wk.received)) : '') + '</td>' +
       '<td style="text-align:right;">' + ncFmt(wk.onHand, 1) + '</td>' +
+      '<td style="text-align:right; ' + (stLow ? 'color:#b91c1c; font-weight:600;' : '') + '">' + (wk.stPct != null ? (wk.stPct * 100).toFixed(0) + '%' : '') + '</td>' +
       '<td style="text-align:right; ' + (wk.wos != null && wk.wos < 1 ? 'color:#b91c1c; font-weight:600;' : '') + '">' + (wk.wos != null ? ncFmt(wk.wos, 1) : '') + '</td>' +
       '</tr>';
   }
@@ -6165,11 +6299,14 @@ function ncRenderWeeklyChart(sku) {
     const key = document.getElementById('nc-week-sku').value;
     sku = (key === '__ALL__') ? ncAggregateWeeks() : (sim.perSku.find(s => s.key === key) || sim.perSku[0]);
   }
-  const labels = sku.weeks.map(w => 'W' + w.w);
-  const pos = sku.weeks.map(w => Math.round(w.posCases));
-  const ship = sku.weeks.map(w => Math.round(w.orderCases));
-  const onHand = sku.weeks.map(w => Math.round(w.onHand));
-  const wos = sku.weeks.map(w => w.wos != null ? Math.round(w.wos * 10) / 10 : null);
+  // Exclude selected months (e.g. launch load-in) so the chart autoscales to steady-state
+  const excluded = state.newCustomer.excludedMonths;
+  const wks = sku.weeks.filter(w => !excluded.has(w.monthKey));
+  const labels = wks.map(w => 'W' + w.w);
+  const pos = wks.map(w => Math.round(w.posCases));
+  const ship = wks.map(w => Math.round(w.orderCases));
+  const onHand = wks.map(w => Math.round(w.onHand));
+  const wos = wks.map(w => w.wos != null ? Math.round(w.wos * 10) / 10 : null);
   const ctx = document.getElementById('nc-weekly-chart').getContext('2d');
   if (ncWeeklyChart) ncWeeklyChart.destroy();
   ncWeeklyChart = new Chart(ctx, {
@@ -6225,9 +6362,10 @@ function exportNewCustomerAssumptions() {
       OUNCES: blank(s.ounces),
       UNITSPERCASE: s.unitsPerCase,
       INNERPACKCASE: s.innerPack || 0,
+      CASESPERLAYER: s.casesPerLayer,
+      MIN_PRESENTATION: s.minPresentationUnits || 0,
       STORES: s.stores,
       VELOCITY: s.velocity,
-      ORDER_INCREMENT: s.orderIncrement,
       INITIAL_SHIPMENT_CASES: s.initialCases,
       LAUNCH_DATE: s.launchDate || '',
       RAMP_WEEKS: blank(s.rampWeeks),   // blank = auto from formation + ounces
@@ -6248,6 +6386,9 @@ function exportNewCustomerAssumptions() {
       { SETTING: 'VELOCITY_RAMP_ENABLED', VALUE: g('nc-ramp-enabled').checked ? 'YES' : 'NO' },
       { SETTING: 'START_VELOCITY_PCT', VALUE: g('nc-ramp-start-pct').value },
       { SETTING: 'BASE_RAMP_WEEKS', VALUE: g('nc-ramp-base-weeks').value },
+      { SETTING: 'ROUND_ORDERS_TO', VALUE: g('nc-round-mode').value },
+      { SETTING: 'MIN_WEEKLY_ST_PCT', VALUE: g('nc-min-st-week').value },
+      { SETTING: 'MIN_MONTHLY_ST_PCT', VALUE: g('nc-min-st-month').value },
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scenarioRows), 'Scenario');
 
