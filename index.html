@@ -820,7 +820,7 @@
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Assumptions (round-trip)</div>
-            <div style="font-size:13px; color:#4b5563; line-height:1.6;"><strong>Export Assumptions</strong> (on the Per-SKU Assumptions card) downloads every current per-SKU input — velocity, ramp weeks, ounces, stores, case pack, initial shipment, launch week, WOS — in the SKU-master column format. Edit it offline, then drop it back on the <strong>SKU Master</strong> box to reload the whole scenario and keep iterating. This is the editing round-trip; it is separate from the forecast-engine export below. Scenario-level settings (launch date, mode, lead time) are re-entered in the UI.</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;"><strong>Export Assumptions</strong> (on the Per-SKU Assumptions card) downloads a two-sheet workbook: <strong>SKU Assumptions</strong> (every per-SKU input — velocity, ramp weeks, ounces, stores, case pack, initial shipment, launch week, WOS) and <strong>Scenario</strong> (all of Section 2 — launch/ship date, horizon, replenishment mode, lead time, target WOS, replenishment start date, and the ramp settings). Edit it offline, then drop it back on the <strong>SKU Master</strong> box to reload the entire scenario — per-SKU values and Section 2 settings — and keep iterating. This is the editing round-trip; it is separate from the forecast-engine export below.</div>
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Forecast &amp; Apply to Engine</div>
@@ -5585,17 +5585,25 @@ function ncToNum(v) { return (v != null && v !== '' && !isNaN(Number(v))) ? Numb
 // Parse an uploaded SKU master file into sku assumption objects.
 function parseSkuMasterFile(buffer) {
   const wb = XLSX.read(buffer, { type: 'array' });
-  const sheet = wb.Sheets[wb.SheetNames[0]];
-  if (!sheet) return { success: false, skus: [], errors: ['No sheets found in file'] };
-  const rawData = XLSX.utils.sheet_to_json(sheet, { defval: null });
-  if (!rawData.length) return { success: false, skus: [], errors: ['Sheet is empty'] };
+  if (!wb.SheetNames.length) return { success: false, skus: [], errors: ['No sheets found in file'] };
 
-  const headers = Object.keys(rawData[0]);
-  const normToKey = {};
-  for (const h of headers) { const k = NC_SKU_COLS[normalizeHeader(h)]; if (k) normToKey[h] = k; }
-  if (!Object.values(normToKey).includes('productNumber')) {
-    return { success: false, skus: [], errors: ['Missing required column PRODUCTNUMBER. Found: ' + headers.join(', ')] };
+  // Find the SKU sheet (first one whose headers map to PRODUCTNUMBER), so a multi-sheet
+  // assumptions export (SKU Assumptions + Scenario) round-trips regardless of sheet order.
+  let rawData = null, headers = null, normToKey = null;
+  for (const sn of wb.SheetNames) {
+    const rd = XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval: null });
+    if (!rd.length) continue;
+    const hd = Object.keys(rd[0]);
+    const map = {};
+    for (const h of hd) { const k = NC_SKU_COLS[normalizeHeader(h)]; if (k) map[h] = k; }
+    if (Object.values(map).includes('productNumber')) { rawData = rd; headers = hd; normToKey = map; break; }
   }
+  if (!rawData) {
+    return { success: false, skus: [], errors: ['Missing required column PRODUCTNUMBER. Found sheets: ' + wb.SheetNames.join(', ')] };
+  }
+
+  // Optional Scenario sheet (SETTING/VALUE rows) → scenario config object
+  const scenario = ncParseScenarioSheet(wb);
 
   const skus = [], errors = [];
   const seen = new Set();
@@ -5624,7 +5632,75 @@ function parseSkuMasterFile(buffer) {
     }));
   }
   if (!skus.length) return { success: false, skus: [], errors: errors.length ? errors : ['No valid SKU rows found'] };
-  return { success: true, skus, errors };
+  return { success: true, skus, errors, scenario };
+}
+
+// Scenario-sheet setting keys → internal field names.
+const NC_SCENARIO_COLS = {
+  'LAUNCH_DATE':'startDate','SHIP_DATE':'startDate','START_DATE':'startDate','FIRST_SHIP_DATE':'startDate',
+  'HORIZON_WEEKS':'horizon','HORIZON':'horizon',
+  'REPLEN_MODE':'mode','MODE':'mode','REPLENISHMENT_MODE':'mode',
+  'LEAD_TIME_WEEKS':'leadTime','LEAD_TIME':'leadTime',
+  'TARGET_WOS':'targetWos','WEEKS_OF_SUPPLY':'targetWos',
+  'REPLEN_START_DATE':'replenStart','REPLENISHMENT_START_DATE':'replenStart',
+  'VELOCITY_RAMP_ENABLED':'rampEnabled','RAMP_ENABLED':'rampEnabled',
+  'START_VELOCITY_PCT':'rampStartPct','START_VELOCITY':'rampStartPct',
+  'BASE_RAMP_WEEKS':'rampBaseWeeks',
+};
+
+// Convert an Excel cell (string ISO date or numeric serial) to a YYYY-MM-DD string.
+function ncCellToDateStr(v) {
+  if (v == null || v === '') return '';
+  if (typeof v === 'number') {
+    const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000);
+    return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0');
+  }
+  const s = String(v).trim();
+  const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? '' : dateStr(d);
+}
+
+// Parse a "Scenario" sheet of SETTING/VALUE rows into a config object (or null if absent).
+function ncParseScenarioSheet(wb) {
+  for (const sn of wb.SheetNames) {
+    const rd = XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval: null });
+    if (!rd.length) continue;
+    const hd = Object.keys(rd[0]).map(normalizeHeader);
+    if (!(hd.includes('SETTING') && hd.includes('VALUE'))) continue;
+    const settingKey = Object.keys(rd[0]).find(h => normalizeHeader(h) === 'SETTING');
+    const valueKey = Object.keys(rd[0]).find(h => normalizeHeader(h) === 'VALUE');
+    const sc = {};
+    for (const row of rd) {
+      const field = NC_SCENARIO_COLS[normalizeHeader(String(row[settingKey] || ''))];
+      if (!field) continue;
+      const raw = row[valueKey];
+      if (raw == null || raw === '') continue;
+      if (field === 'startDate' || field === 'replenStart') sc[field] = ncCellToDateStr(raw);
+      else if (field === 'mode') sc[field] = /pos|fill|1/i.test(String(raw)) ? 'pos_fill' : 'wos';
+      else if (field === 'rampEnabled') sc[field] = /^(y|yes|true|1|on)/i.test(String(raw).trim());
+      else sc[field] = ncToNum(raw);
+    }
+    return Object.keys(sc).length ? sc : null;
+  }
+  return null;
+}
+
+// Apply a parsed scenario config object to the Section-2 inputs.
+function ncApplyScenario(sc) {
+  if (!sc) return;
+  const set = (id, v) => { if (v != null && v !== '') document.getElementById(id).value = v; };
+  set('nc-start-date', sc.startDate);
+  set('nc-horizon', sc.horizon);
+  if (sc.mode) document.getElementById('nc-mode').value = sc.mode;
+  set('nc-leadtime', sc.leadTime);
+  set('nc-target-wos', sc.targetWos);
+  set('nc-replen-start', sc.replenStart);
+  if (sc.rampEnabled != null) document.getElementById('nc-ramp-enabled').checked = sc.rampEnabled;
+  set('nc-ramp-start-pct', sc.rampStartPct);
+  set('nc-ramp-base-weeks', sc.rampBaseWeeks);
+  ncRenderConfig();
 }
 
 // Normalize a partial sku into a full assumptions object with sensible defaults.
@@ -5719,7 +5795,9 @@ function ncHandleFile(file) {
         return;
       }
       state.newCustomer.skus = result.skus;
+      if (result.scenario) ncApplyScenario(result.scenario);
       document.getElementById('nc-sku-status').textContent = result.skus.length + ' SKUs loaded' +
+        (result.scenario ? ' + scenario' : '') +
         (result.errors.length ? ' (' + result.errors.length + ' rows skipped)' : '');
       document.getElementById('nc-config-section').classList.remove('hidden');
       ncRenderSkuTable();
@@ -6102,9 +6180,25 @@ function exportNewCustomerAssumptions() {
     }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'SKU Assumptions');
+
+    // Scenario sheet (Section 2) — re-applied on re-upload
+    const g = id => document.getElementById(id);
+    const scenarioRows = [
+      { SETTING: 'LAUNCH_DATE', VALUE: g('nc-start-date').value },
+      { SETTING: 'HORIZON_WEEKS', VALUE: g('nc-horizon').value },
+      { SETTING: 'REPLEN_MODE', VALUE: g('nc-mode').value },
+      { SETTING: 'LEAD_TIME_WEEKS', VALUE: g('nc-leadtime').value },
+      { SETTING: 'TARGET_WOS', VALUE: g('nc-target-wos').value },
+      { SETTING: 'REPLEN_START_DATE', VALUE: g('nc-replen-start').value },
+      { SETTING: 'VELOCITY_RAMP_ENABLED', VALUE: g('nc-ramp-enabled').checked ? 'YES' : 'NO' },
+      { SETTING: 'START_VELOCITY_PCT', VALUE: g('nc-ramp-start-pct').value },
+      { SETTING: 'BASE_RAMP_WEEKS', VALUE: g('nc-ramp-base-weeks').value },
+    ];
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scenarioRows), 'Scenario');
+
     const name = (nc.customerName || document.getElementById('nc-customer-name').value || 'new_customer').replace(/[^a-z0-9]+/gi, '_');
     XLSX.writeFile(wb, 'new_customer_assumptions_' + name + '.xlsx');
-    showToast('Exported ' + rows.length + ' SKU assumptions — edit and re-upload via SKU Master to resume', 'success');
+    showToast('Exported ' + rows.length + ' SKU assumptions + scenario — edit and re-upload via SKU Master to resume', 'success');
   } catch (e) { showToast('Export error: ' + e.message, 'error'); }
 }
 
