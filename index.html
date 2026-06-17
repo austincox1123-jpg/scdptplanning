@@ -946,6 +946,7 @@
             </div>
           </div>
           <p class="text-xs text-gray-500 mb-3">Weekly shipments and POS aggregated to calendar months. "Apply to Forecast Engine" adds this customer to the main Forecast tab with these monthly order projections as its saved forecast.</p>
+          <div style="height:260px; position:relative; margin-bottom:18px;"><canvas id="nc-monthly-chart"></canvas></div>
           <div style="overflow-x:auto;">
             <table class="data-grid" id="nc-monthly-table"></table>
           </div>
@@ -956,6 +957,7 @@
             <h2 class="text-lg font-semibold" style="color:#111827;">Weekly Simulation Detail</h2>
             <select id="nc-week-sku" class="select-field" style="width:280px;" onchange="ncRenderWeeklyGrid()"></select>
           </div>
+          <div style="height:320px; position:relative; margin-bottom:18px;"><canvas id="nc-weekly-chart"></canvas></div>
           <div style="overflow-x:auto; max-height:460px; overflow-y:auto;">
             <table class="data-grid" id="nc-weekly-table"></table>
           </div>
@@ -5915,6 +5917,7 @@ function runNcSimulation() {
   document.getElementById('nc-results-section').classList.remove('hidden');
   ncPopulateWeekSelector();
   ncRenderMonthly();
+  ncRenderMonthlyChart();
   ncRenderWeeklyGrid();
   showToast('Simulation complete — ' + perSku.length + ' SKUs, ' + horizon + ' weeks', 'success');
 }
@@ -5987,6 +5990,70 @@ function ncRenderWeeklyGrid() {
   }
   html += '</tbody>';
   document.getElementById('nc-weekly-table').innerHTML = html;
+  ncRenderWeeklyChart(sku);
+}
+
+// ---- New Customer charts (Chart.js) ----
+let ncMonthlyChart = null, ncWeeklyChart = null;
+
+// Monthly aggregate: Order vs POS cases as grouped bars.
+function ncRenderMonthlyChart() {
+  if (typeof Chart === 'undefined') return;
+  const sim = state.newCustomer.sim;
+  const totals = ncMonthlyTotals(null);
+  const labels = sim.months.map(fmtMonth);
+  const order = sim.months.map(mk => Math.round((totals.get(mk) || {}).order || 0));
+  const pos = sim.months.map(mk => Math.round((totals.get(mk) || {}).pos || 0));
+  const ctx = document.getElementById('nc-monthly-chart').getContext('2d');
+  if (ncMonthlyChart) ncMonthlyChart.destroy();
+  ncMonthlyChart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label: 'Order Cases (shipments)', data: order, backgroundColor: '#16a34a' },
+      { label: 'POS Cases (consumer)', data: pos, backgroundColor: '#2563eb' },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      plugins: { legend: { labels: { font: { size: 11 }, usePointStyle: true } }, title: { display: true, text: 'Monthly Order vs POS (all SKUs)', font: { size: 12 } } },
+      scales: { x: { ticks: { font: { size: 10 } }, grid: { display: false } }, y: { beginAtZero: true, ticks: { font: { size: 10 } }, grid: { color: '#f3f4f6' }, title: { display: true, text: 'Cases' } } },
+    },
+  });
+}
+
+// Per-SKU weekly view: POS, shipments, on-hand inventory (left axis) + WOS (right axis).
+function ncRenderWeeklyChart(sku) {
+  if (typeof Chart === 'undefined') return;
+  if (!sku) {
+    const sim = state.newCustomer.sim;
+    const key = document.getElementById('nc-week-sku').value;
+    sku = sim.perSku.find(s => s.key === key) || sim.perSku[0];
+  }
+  const labels = sku.weeks.map(w => 'W' + w.w);
+  const pos = sku.weeks.map(w => Math.round(w.posCases));
+  const ship = sku.weeks.map(w => Math.round(w.orderCases));
+  const onHand = sku.weeks.map(w => Math.round(w.onHand));
+  const wos = sku.weeks.map(w => w.wos != null ? Math.round(w.wos * 10) / 10 : null);
+  const ctx = document.getElementById('nc-weekly-chart').getContext('2d');
+  if (ncWeeklyChart) ncWeeklyChart.destroy();
+  ncWeeklyChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets: [
+      { label: 'On-Hand Inventory (cases)', data: onHand, borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.12)', fill: true, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'POS Cases', data: pos, borderColor: '#2563eb', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'Ship Cases', data: ship, borderColor: '#16a34a', borderWidth: 2, tension: 0.2, pointRadius: 0, yAxisID: 'y' },
+      { label: 'Weeks of Supply', data: wos, borderColor: '#9333ea', borderWidth: 1.5, borderDash: [5, 4], tension: 0.2, pointRadius: 0, yAxisID: 'y1' },
+    ] },
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: { duration: 300 },
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { font: { size: 11 }, usePointStyle: true, pointStyle: 'line' } }, title: { display: true, text: 'Weekly Inventory & Flow — ' + sku.productNumber, font: { size: 12 } } },
+      scales: {
+        x: { ticks: { font: { size: 9 }, maxTicksLimit: 26 }, grid: { display: false } },
+        y: { beginAtZero: true, position: 'left', ticks: { font: { size: 10 } }, grid: { color: '#f3f4f6' }, title: { display: true, text: 'Cases' } },
+        y1: { beginAtZero: true, position: 'right', ticks: { font: { size: 10 } }, grid: { drawOnChartArea: false }, title: { display: true, text: 'Weeks of Supply' } },
+      },
+    },
+  });
 }
 
 // Build per-SKU per-month projection rows (the bridge to export + engine).
