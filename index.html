@@ -40,7 +40,7 @@
     .grid-cols-2-3 { grid-template-columns: repeat(2, 1fr); }
     @media (min-width: 768px) { .grid-cols-2-3 { grid-template-columns: repeat(3, 1fr); } }
     .grid-main { display: grid; grid-template-columns: 1fr; gap: 24px; }
-    @media (min-width: 1024px) { .grid-main { grid-template-columns: 3fr 1fr; } }
+    @media (min-width: 1024px) { .grid-main { grid-template-columns: minmax(0, 3fr) minmax(0, 1fr); } }
     .gap-1 { gap: 4px; } .gap-3 { gap: 12px; } .gap-4 { gap: 16px; } .gap-6 { gap: 24px; }
     /* Spacing */
     .p-4 { padding: 16px; } .p-6 { padding: 24px; } .p-12 { padding: 48px; }
@@ -140,7 +140,7 @@
     .drop-zone:hover { border-color: #9ca3af; }
     .drop-zone.active { border-color: var(--red); background: var(--red-tint); }
     /* Data grid */
-    .grid-container { max-height: 450px; overflow-y: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
+    .grid-container { max-height: 450px; overflow-y: auto; overflow-x: auto; border: 1px solid #e5e7eb; border-radius: 8px; }
     table.data-grid { border-collapse: collapse; width: 100%; font-size: 13px; }
     table.data-grid th { background: #f8f6f5; position: sticky; top: 0; z-index: 1; text-align: left; padding: 10px 16px; border-bottom: 2px solid #e5e7eb; font-weight: 600; font-size: 11px; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em; white-space: nowrap; }
     table.data-grid td { padding: 9px 16px; border-bottom: 1px solid #f3f4f6; white-space: nowrap; }
@@ -481,26 +481,6 @@
             <div style="height:350px; position:relative;"><canvas id="forecast-chart" style="cursor:crosshair"></canvas></div>
             <div id="chart-promo-tags" style="display:flex; overflow-x:auto; padding:2px 0 4px; gap:0;"></div>
           </div>
-          <!-- Accuracy / Backtesting -->
-          <div id="accuracy-section" class="card mt-4 p-6 hidden">
-            <div class="flex justify-between items-center mb-4">
-              <h2 class="text-sm font-semibold text-gray-700">Forecast Accuracy — Lag 2 Month Backtest</h2>
-              <button class="backtest-toggle" onclick="toggleBacktestDetail()">Show detail</button>
-            </div>
-            <p class="text-xs text-gray-500 mb-4">Each historical month is forecasted using only data available 2 months prior, then compared to actuals.</p>
-            <div class="accuracy-grid" id="accuracy-metrics"></div>
-            <div id="backtest-detail" class="hidden">
-              <div class="backtest-grid-container mt-4">
-                <table class="data-grid">
-                  <thead><tr>
-                    <th>Month</th><th class="num">Actual Orders</th><th class="num">Lag2 Forecast</th><th class="num">Net Error</th><th class="num">Abs Error</th><th class="num">Abs % Error</th>
-                  </tr></thead>
-                  <tbody id="backtest-body"></tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
           <!-- Data grid -->
           <div class="card mt-4" style="overflow:hidden">
             <div class="grid-container">
@@ -3456,18 +3436,19 @@ function renderKpiStrip(backtest) {
 }
 
 function renderAccuracyFromResults(backtest) {
+  // Headline metrics live in the red KPI strip; the standalone accuracy card was removed.
+  renderKpiStrip(backtest || null);
   const section = document.getElementById('accuracy-section');
+  if (!section) return;
   const metricsDiv = document.getElementById('accuracy-metrics');
   const backtestBody = document.getElementById('backtest-body');
 
   if (!backtest) {
     section.classList.add('hidden');
-    renderKpiStrip(null);
     return;
   }
 
   section.classList.remove('hidden');
-  renderKpiStrip(backtest);
 
   // Color coding thresholds
   function accClass(v) { return v >= 0.85 ? 'metric-good' : v >= 0.70 ? 'metric-ok' : 'metric-bad'; }
