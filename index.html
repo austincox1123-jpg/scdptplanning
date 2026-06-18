@@ -1123,13 +1123,13 @@ const state = {
   previewParams: null,   // config params used for the preview
   overrides: {},
   hasPosData: false,
-  // Tags are scoped per item (customer|product). excludedMonths/promoMonths are live
-  // references into the current item's store, swapped by syncActiveTags() when the item changes.
-  excludedMonths: new Set(),  // ACTIVE item's set of "YYYY-MM-15" month keys excluded from forecast
+  // excludedMonths is GLOBAL — excluding a month applies across ALL items.
+  // promoMonths is scoped per item (customer|product): a live reference into the
+  // current item's promoByItem store, swapped by syncActiveTags() when the item changes.
+  excludedMonths: new Set(),  // GLOBAL set of "YYYY-MM-15" month keys excluded from every forecast
   promoMonths: {},       // ACTIVE item's month key => { type: 'promo'|'outlier', lift } — tagged months
-  excludedByItem: {},    // item key => Set of excluded month keys
   promoByItem: {},       // item key => { month key => {type, lift} }
-  _activeTagKey: null,   // item key the active excludedMonths/promoMonths currently point at
+  _activeTagKey: null,   // item key the active promoMonths currently points at
   _activeMoqKey: null,   // item key the MOQ field/hint were last detected for
   isWeekly: false,       // true when data has WEEK_NUMBER_OF_MONTH
   viewMode: 'month',     // 'month' or 'week' — for chart/grid toggle
@@ -2017,7 +2017,6 @@ function loadData(rows, fileName) {
   state.overrides = {};
   state.excludedMonths = new Set();
   state.promoMonths = {};
-  state.excludedByItem = {};
   state.promoByItem = {};
   state._activeTagKey = null;
   state._activeMoqKey = null;
@@ -2442,13 +2441,13 @@ function currentItemKey() {
   return (state.filters.customer || 'all') + '|' + (state.filters.product || 'all');
 }
 
-// Point the active excludedMonths/promoMonths at the given item's store (creating it if new).
-// Returns the previous-active sets so callers (e.g. bulk forecast) can restore them.
+// Point the active promoMonths at the given item's store (creating it if new).
+// excludedMonths is GLOBAL (shared across all items) and is never swapped here —
+// only the per-item promo/outlier tags are scoped to the item.
+// Returns the previous-active promo tags so callers (e.g. bulk forecast) can restore them.
 function setActiveItemTags(key) {
-  const prev = { excludedMonths: state.excludedMonths, promoMonths: state.promoMonths };
-  if (!state.excludedByItem[key]) state.excludedByItem[key] = new Set();
+  const prev = { promoMonths: state.promoMonths };
   if (!state.promoByItem[key]) state.promoByItem[key] = {};
-  state.excludedMonths = state.excludedByItem[key];
   state.promoMonths = state.promoByItem[key];
   state._activeTagKey = key;
   return prev;
