@@ -6170,7 +6170,7 @@ function ncRenderRampCombos() {
     formations.map((f, i) => '<option value="' + i + '"' + (filt.formation === f ? ' selected' : '') + '>' + sanitize(f || '(none)') + '</option>')
   ).join('');
   const ozOpts = ['<option value="">All ounces</option>'].concat(
-    ounces.map((o, i) => '<option value="' + i + '"' + (filt.ounces === o ? ' selected' : '') + '>' + (o === '' ? '(none)' : sanitize(ncFmt(o))) + '</option>')
+    ounces.map((o, i) => '<option value="' + i + '"' + (filt.ounces === o ? ' selected' : '') + '>' + (o === '' ? '(none)' : sanitize(ncFmtOz(o))) + '</option>')
   ).join('');
 
   const filtered = combos.filter(c =>
@@ -6206,7 +6206,7 @@ function ncRenderRampCombos() {
     const v = state.newCustomer.rampCombos[c.key];
     html += '<tr>' +
       '<td>' + sanitize(c.formation || '—') + '</td>' +
-      '<td style="text-align:right;">' + (c.ounces != null ? ncFmt(c.ounces) : '—') + '</td>' +
+      '<td style="text-align:right;">' + (c.ounces != null ? ncFmtOz(c.ounces) : '—') + '</td>' +
       '<td style="text-align:right; color:#6b7280;">' + c.count + '</td>' +
       '<td><input type="number" step="1" min="1" placeholder="' + base + '" value="' + (v != null ? v : '') + '" oninput="ncUpdateRampCombo(' + idx + ',this.value)" style="width:90px;"></td>' +
       '</tr>';
@@ -6444,6 +6444,8 @@ function ncMonthlyTotals(skuFilter) {
 }
 
 function ncFmt(v, dp) { return (v == null) ? '' : Number(v).toLocaleString('en-US', { maximumFractionDigits: dp == null ? 0 : dp }); }
+// Ounces always show 2 decimals (e.g. 3.50, 16.00).
+function ncFmtOz(v) { return (v == null || v === '') ? '' : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 
 function ncRenderMonthly() {
   const sim = state.newCustomer.sim;
