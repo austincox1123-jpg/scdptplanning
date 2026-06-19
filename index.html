@@ -6191,8 +6191,18 @@ function ncRenderRampCombos() {
   if (!filtered.length) {
     html += '<tr><td colspan="4" class="text-xs text-gray-400" style="padding:8px;">No combinations match this filter.</td></tr>';
   }
-  combos.forEach((c, idx) => {
-    if (!filtered.includes(c)) return; // idx stays aligned with ncComboList() order
+  // Keep each combo's original ncComboList() index (so edits map back correctly),
+  // then display sorted by Formation (A→Z) then Ounces (small→large; blank first).
+  const rows = [];
+  combos.forEach((c, idx) => { if (filtered.includes(c)) rows.push({ c, idx }); });
+  rows.sort((a, b) => {
+    const f = (a.c.formation || '').localeCompare(b.c.formation || '', undefined, { sensitivity: 'base' });
+    if (f !== 0) return f;
+    const oa = a.c.ounces != null ? a.c.ounces : -Infinity;
+    const ob = b.c.ounces != null ? b.c.ounces : -Infinity;
+    return oa - ob;
+  });
+  rows.forEach(({ c, idx }) => {
     const v = state.newCustomer.rampCombos[c.key];
     html += '<tr>' +
       '<td>' + sanitize(c.formation || '—') + '</td>' +
