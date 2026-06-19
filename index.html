@@ -1143,6 +1143,7 @@ const state = {
     customerName: '',
     skus: [],        // per-SKU assumptions (see ncMakeSku)
     rampCombos: {},  // 'formation|ounces' => ramp weeks (manual rate per unique combo)
+    _rampFilter: { formation: null, ounces: null }, // filter for the ramp-weeks combo grid
     sim: null,       // { perSku: [{ key, productNumber, productName, weeks:[...] }], months: [...] }
     excludedMonths: new Set(), // month keys excluded from the weekly chart (e.g. launch load-in)
     _initialized: false,
@@ -6052,6 +6053,7 @@ function ncHandleFile(file) {
       }
       state.newCustomer.skus = result.skus;
       state.newCustomer.rampCombos = result.rampCombos || {};
+      state.newCustomer._rampFilter = { formation: null, ounces: null };
       if (result.scenario) ncApplyScenario(result.scenario);
       // If every SKU has a launch date, anchor the scenario ship date to the earliest one
       // (unless a Scenario sheet already supplied an explicit start date).
@@ -6092,6 +6094,7 @@ function loadNcDemo() {
     ncMakeSku({ productNumber:'FWF-001', productName:'Feline Select Wet Pate 12pk', brand:'Feline', type:'Wet Food', formation:'Pate', ounces:3, unitsPerCase:12, innerPack:0, stores:1500, velocity:5, casesPerLayer:10, minPresentationUnits:24, initialCases:600, launchDate:wk2 }),
   ];
   state.newCustomer.rampCombos = {};
+  state.newCustomer._rampFilter = { formation: null, ounces: null };
   document.getElementById('nc-sku-status').textContent = state.newCustomer.skus.length + ' demo SKUs loaded';
   document.getElementById('nc-config-section').classList.remove('hidden');
   ncRenderSkuTable();
@@ -6139,6 +6142,15 @@ function ncRenderSkuTable() {
   ncRenderRampCombos();
 }
 
+// Distinct Formation / Ounces values across the combos, for the filter dropdowns.
+// Built from ncComboList() so indices are deterministic and shared with the filter handler.
+function ncComboFilterValues() {
+  const combos = ncComboList();
+  const formations = [...new Set(combos.map(c => c.formation))];
+  const ounces = [...new Set(combos.map(c => (c.ounces != null ? c.ounces : '')))];
+  return { combos, formations, ounces };
+}
+
 // Render the editable "Ramp Weeks by Formation & Ounces" grid below the ramp config.
 function ncRenderRampCombos() {
   const wrap = document.getElementById('nc-ramp-combos-wrap');
@@ -6147,10 +6159,40 @@ function ncRenderRampCombos() {
   const combos = ncComboList();
   if (!on || !combos.length) { wrap.innerHTML = ''; return; }
   const base = ncToNum(document.getElementById('nc-ramp-base-weeks').value) || 8;
+
+  const filt = state.newCustomer._rampFilter || (state.newCustomer._rampFilter = { formation: null, ounces: null });
+  const { formations, ounces } = ncComboFilterValues();
+  // Self-heal: drop a filter whose value no longer exists (e.g. after loading new SKUs)
+  if (filt.formation != null && !formations.includes(filt.formation)) filt.formation = null;
+  if (filt.ounces != null && !ounces.includes(filt.ounces)) filt.ounces = null;
+
+  const formOpts = ['<option value="">All formations</option>'].concat(
+    formations.map((f, i) => '<option value="' + i + '"' + (filt.formation === f ? ' selected' : '') + '>' + sanitize(f || '(none)') + '</option>')
+  ).join('');
+  const ozOpts = ['<option value="">All ounces</option>'].concat(
+    ounces.map((o, i) => '<option value="' + i + '"' + (filt.ounces === o ? ' selected' : '') + '>' + (o === '' ? '(none)' : sanitize(ncFmt(o))) + '</option>')
+  ).join('');
+
+  const filtered = combos.filter(c =>
+    (filt.formation == null || c.formation === filt.formation) &&
+    (filt.ounces == null || (c.ounces != null ? c.ounces : '') === filt.ounces));
+  const isFiltered = filt.formation != null || filt.ounces != null;
+
   let html = '<div class="label" style="margin-bottom:4px;">Ramp Weeks by Formation &amp; Ounces</div>' +
     '<div class="text-xs text-gray-400" style="margin-bottom:8px;">One row per unique Formation + Ounces combination in your SKUs. Set the weeks each takes to reach full velocity. Blank = Base Ramp Weeks (' + base + ').</div>' +
+    '<div class="flex items-center gap-2" style="margin-bottom:8px; flex-wrap:wrap;">' +
+      '<span class="text-xs text-gray-500">Filter:</span>' +
+      '<select class="select-field" style="width:160px;" onchange="ncUpdateRampFilter(\'formation\',this.value)">' + formOpts + '</select>' +
+      '<select class="select-field" style="width:140px;" onchange="ncUpdateRampFilter(\'ounces\',this.value)">' + ozOpts + '</select>' +
+      (isFiltered ? '<button type="button" class="btn-outline" style="font-size:11px; padding:3px 8px;" onclick="ncClearRampFilter()">Clear</button>' +
+        '<span class="text-xs text-gray-400">' + filtered.length + ' of ' + combos.length + '</span>' : '') +
+    '</div>' +
     '<table class="data-grid" style="width:auto;"><thead><tr><th>Formation</th><th>Ounces</th><th>SKUs</th><th>Ramp Wks</th></tr></thead><tbody>';
+  if (!filtered.length) {
+    html += '<tr><td colspan="4" class="text-xs text-gray-400" style="padding:8px;">No combinations match this filter.</td></tr>';
+  }
   combos.forEach((c, idx) => {
+    if (!filtered.includes(c)) return; // idx stays aligned with ncComboList() order
     const v = state.newCustomer.rampCombos[c.key];
     html += '<tr>' +
       '<td>' + sanitize(c.formation || '—') + '</td>' +
@@ -6161,6 +6203,24 @@ function ncRenderRampCombos() {
   });
   html += '</tbody></table>';
   wrap.innerHTML = html;
+}
+
+// Apply a Formation/Ounces filter selection (value is the option's index, '' = All).
+function ncUpdateRampFilter(field, idxStr) {
+  const filt = state.newCustomer._rampFilter || (state.newCustomer._rampFilter = { formation: null, ounces: null });
+  if (idxStr === '' || idxStr == null) {
+    filt[field] = null;
+  } else {
+    const vals = ncComboFilterValues();
+    const arr = field === 'formation' ? vals.formations : vals.ounces;
+    filt[field] = arr[Number(idxStr)];
+  }
+  ncRenderRampCombos();
+}
+
+function ncClearRampFilter() {
+  state.newCustomer._rampFilter = { formation: null, ounces: null };
+  ncRenderRampCombos();
 }
 
 // Store/clear a manual ramp rate for the combo at the given index in ncComboList() order.
