@@ -882,8 +882,8 @@
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Velocity Ramp (by Formation &amp; Ounces)</div>
-            <div style="font-size:13px; color:#4b5563; line-height:1.6;">New items rarely hit full velocity on day one. With ramp enabled, each SKU starts at <strong>Start Velocity %</strong> of its full rate in its launch week and climbs linearly to 100% over its <strong>Ramp Wks</strong>. Ramp Wks is auto-derived from the SKU's <strong>Formation</strong> and <strong>Ounces</strong> — smaller and trial-type sizes (trial, sample, travel, single, snack, treat) gain traction faster (≈half the base), while bulk/club/family/value sizes ramp slower (≈1.5×); ounces scale it against a 16-oz reference. Any per-SKU Ramp Wks you type overrides the auto value.</div>
-            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">RampWks ≈ BaseWeeks × clamp(Ounces/16, 0.4, 2.5) × FormationFactor<br>Velocity(wk) = FullVelocity × [ StartPct + (1−StartPct) × min(1, weeksSinceLaunch / (RampWks−1)) ]</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;">New items rarely hit full velocity on day one. With ramp enabled, each SKU starts at <strong>Start Velocity %</strong> of its full rate in its launch week and climbs linearly to 100% over its <strong>Ramp Wks</strong>. Ramp Wks is set per unique <strong>Formation + Ounces</strong> combination in the <strong>Ramp Weeks by Formation &amp; Ounces</strong> grid (one row per combo found in your SKUs); any combo left blank uses <strong>Base Ramp Weeks</strong>, and any per-SKU Ramp Wks you type overrides its combo's value.</div>
+            <div style="margin-top:8px; padding:8px 12px; background:#fff; border:1px solid #e5e7eb; border-radius:6px; font-family:ui-monospace,monospace; font-size:12px; color:#374151;">RampWks = per-SKU override, else Formation+Ounces combo rate, else Base Ramp Weeks<br>Velocity(wk) = FullVelocity × [ StartPct + (1−StartPct) × min(1, weeksSinceLaunch / (RampWks−1)) ]</div>
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Replenishment: Weeks-of-Supply + Lead Time</div>
@@ -905,7 +905,7 @@
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Assumptions (round-trip)</div>
-            <div style="font-size:13px; color:#4b5563; line-height:1.6;"><strong>Export Assumptions</strong> (on the Per-SKU Assumptions card) downloads a two-sheet workbook: <strong>SKU Assumptions</strong> (every per-SKU input — velocity, ramp weeks, ounces, stores, case pack, initial shipment, launch week, WOS) and <strong>Scenario</strong> (all of Section 2 — launch/ship date, horizon, replenishment mode, lead time, target WOS, replenishment start date, and the ramp settings). Edit it offline, then drop it back on the <strong>SKU Master</strong> box to reload the entire scenario — per-SKU values and Section 2 settings — and keep iterating. This is the editing round-trip; it is separate from the forecast-engine export below.</div>
+            <div style="font-size:13px; color:#4b5563; line-height:1.6;"><strong>Export Assumptions</strong> (on the Per-SKU Assumptions card) downloads a workbook with <strong>SKU Assumptions</strong> (every per-SKU input — velocity, cost, ramp weeks, ounces, stores, case pack, initial shipment, launch week, WOS), <strong>Scenario</strong> (all of Section 2 — launch/ship date, horizon, replenishment mode, lead time, target WOS, replenishment start date, and the ramp settings), and <strong>Ramp Rates</strong> (the per Formation+Ounces ramp weeks, when any are set). Edit it offline, then drop it back on the <strong>SKU Master</strong> box to reload the entire scenario — per-SKU values, combo ramp rates, and Section 2 settings — and keep iterating. This is the editing round-trip; it is separate from the forecast-engine export below.</div>
           </div>
           <div style="padding:12px 16px; background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px;">
             <div style="font-size:14px; font-weight:600; color:#374151; margin-bottom:4px;">Export Forecast &amp; Apply to Engine</div>
@@ -955,7 +955,7 @@
                 <summary style="cursor:pointer; font-weight:600; color:var(--ink-soft);">All columns &amp; tips</summary>
                 <div style="margin-top:10px; line-height:1.7;">
                   <div class="flex" style="flex-wrap:wrap; gap:5px; margin-bottom:10px;">
-                    <span class="col-tag">PRODUCTNAME</span><span class="col-tag">BRAND</span><span class="col-tag">TYPE</span><span class="col-tag">FORMATION</span><span class="col-tag">OUNCES</span><span class="col-tag">UNITSPERCASE</span><span class="col-tag">INNERPACKCASE</span><span class="col-tag">CASESPERLAYER</span><span class="col-tag">MIN_PRESENTATION</span><span class="col-tag">STORES</span><span class="col-tag">VELOCITY</span><span class="col-tag">INITIAL_SHIPMENT_CASES</span><span class="col-tag">LAUNCH_WEEK</span><span class="col-tag">RAMP_WEEKS</span><span class="col-tag">TARGET_WOS</span>
+                    <span class="col-tag">PRODUCTNAME</span><span class="col-tag">BRAND</span><span class="col-tag">TYPE</span><span class="col-tag">FORMATION</span><span class="col-tag">OUNCES</span><span class="col-tag">COST</span><span class="col-tag">UNITSPERCASE</span><span class="col-tag">INNERPACKCASE</span><span class="col-tag">CASESPERLAYER</span><span class="col-tag">MIN_PRESENTATION</span><span class="col-tag">STORES</span><span class="col-tag">VELOCITY</span><span class="col-tag">INITIAL_SHIPMENT_CASES</span><span class="col-tag">LAUNCH_WEEK</span><span class="col-tag">RAMP_WEEKS</span><span class="col-tag">TARGET_WOS</span>
                   </div>
                   <ul style="margin:0; padding-left:18px;">
                     <li style="margin-bottom:3px;"><strong>LAUNCH_WEEK</strong> is a date — when that SKU starts selling.</li>
@@ -1034,7 +1034,8 @@
               <input type="number" id="nc-ramp-base-weeks" value="8" min="1" max="52" class="select-field" style="width:110px;" onchange="ncRenderSkuTable()">
             </div>
           </div>
-          <p class="text-xs text-gray-400 mt-2">Per-SKU values below override these defaults. Velocity = units sold per store per week (at full ramp). New items start at <strong>Start Velocity %</strong> and ramp to 100% over each SKU's <strong>Ramp Wks</strong> — auto-derived from formation &amp; ounces (smaller/trial sizes ramp faster), editable per row.</p>
+          <div id="nc-ramp-combos-wrap" style="margin-top:12px;"></div>
+          <p class="text-xs text-gray-400 mt-2">Per-SKU values below override these defaults. Velocity = units sold per store per week (at full ramp). New items start at <strong>Start Velocity %</strong> and ramp to 100% over their <strong>Ramp Wks</strong> — set per Formation &amp; Ounces combination above, overridable per row.</p>
         </div>
 
         <div class="card p-6 mb-6">
@@ -1141,6 +1142,7 @@ const state = {
   newCustomer: {
     customerName: '',
     skus: [],        // per-SKU assumptions (see ncMakeSku)
+    rampCombos: {},  // 'formation|ounces' => ramp weeks (manual rate per unique combo)
     sim: null,       // { perSku: [{ key, productNumber, productName, weeks:[...] }], months: [...] }
     excludedMonths: new Set(), // month keys excluded from the weekly chart (e.g. launch load-in)
     _initialized: false,
@@ -5755,6 +5757,7 @@ const NC_SKU_COLS = {
   'LAUNCH_WEEK':'launchDate','LAUNCH_DATE':'launchDate','LAUNCH':'launchDate',
   'TARGET_WOS':'targetWos','WOS':'targetWos','WEEKS_OF_SUPPLY':'targetWos',
   'OUNCES':'ounces','OZ':'ounces','SIZE_OZ':'ounces','UNIT_SIZE':'ounces','SIZE':'ounces',
+  'COST':'cost','COST $':'cost','COST_$':'cost','COST_USD':'cost','UNIT_COST':'cost','ITEM_COST':'cost','COST_PER_UNIT':'cost',
   'RAMP_WEEKS':'rampWeeks','RAMP':'rampWeeks','WEEKS_TO_FULL':'rampWeeks',
 };
 
@@ -5782,6 +5785,8 @@ function parseSkuMasterFile(buffer) {
 
   // Optional Scenario sheet (SETTING/VALUE rows) → scenario config object
   const scenario = ncParseScenarioSheet(wb);
+  // Optional Ramp Rates sheet → per Formation+Ounces combo ramp-weeks map
+  const rampCombos = ncParseRampRatesSheet(wb);
 
   const skus = [], errors = [];
   const seen = new Set();
@@ -5808,11 +5813,12 @@ function parseSkuMasterFile(buffer) {
       launchDate: ncCellToDateStr(m.launchDate),
       targetWos: ncToNum(m.targetWos),
       ounces: ncToNum(m.ounces),
+      cost: ncToNum(m.cost),
       rampWeeks: ncToNum(m.rampWeeks),
     }));
   }
   if (!skus.length) return { success: false, skus: [], errors: errors.length ? errors : ['No valid SKU rows found'] };
-  return { success: true, skus, errors, scenario };
+  return { success: true, skus, errors, scenario, rampCombos };
 }
 
 // Scenario-sheet setting keys → internal field names.
@@ -5843,6 +5849,33 @@ function ncCellToDateStr(v) {
   if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
   const d = new Date(s);
   return isNaN(d.getTime()) ? '' : dateStr(d);
+}
+
+// Parse a "Ramp Rates" sheet (FORMATION / OUNCES / RAMP_WEEKS rows) into a
+// { 'formation|ounces': weeks } map keyed the same way as ncComboKey (or null if absent).
+function ncParseRampRatesSheet(wb) {
+  for (const sn of wb.SheetNames) {
+    const rd = XLSX.utils.sheet_to_json(wb.Sheets[sn], { defval: null });
+    if (!rd.length) continue;
+    const hd = Object.keys(rd[0]).map(normalizeHeader);
+    // Must look like a dedicated ramp-rate sheet, not the per-SKU assumptions sheet
+    // (which also carries FORMATION + RAMP_WEEKS columns).
+    if (hd.includes('PRODUCTNUMBER')) continue;
+    if (!(hd.includes('FORMATION') && hd.includes('RAMP_WEEKS'))) continue;
+    const fK = Object.keys(rd[0]).find(h => normalizeHeader(h) === 'FORMATION');
+    const oK = Object.keys(rd[0]).find(h => normalizeHeader(h) === 'OUNCES');
+    const wK = Object.keys(rd[0]).find(h => normalizeHeader(h) === 'RAMP_WEEKS');
+    const out = {};
+    for (const row of rd) {
+      const wks = ncToNum(row[wK]);
+      if (wks == null || wks <= 0) continue;
+      const oz = oK ? ncToNum(row[oK]) : null;
+      const key = String(row[fK] || '').trim() + '|' + (oz != null && oz > 0 ? oz : '');
+      out[key] = wks;
+    }
+    return Object.keys(out).length ? out : null;
+  }
+  return null;
 }
 
 // Parse a "Scenario" sheet of SETTING/VALUE rows into a config object (or null if absent).
@@ -5906,7 +5939,8 @@ function ncMakeSku(p) {
     launchDate: p.launchDate || '', // '' = launch on the scenario start date
     targetWos: (p.targetWos != null && p.targetWos > 0) ? p.targetWos : null, // null = use scenario default
     ounces: (p.ounces != null && p.ounces > 0) ? p.ounces : null,
-    rampWeeks: (p.rampWeeks != null && p.rampWeeks > 0) ? p.rampWeeks : null, // null = auto from formation + ounces
+    cost: (p.cost != null && p.cost >= 0) ? p.cost : null, // $ unit cost (input only)
+    rampWeeks: (p.rampWeeks != null && p.rampWeeks > 0) ? p.rampWeeks : null, // null = use combo / base rate
   };
 }
 
@@ -5924,18 +5958,37 @@ function ncLaunchWeekFor(s, startDate) {
   return Math.max(1, Math.floor((d.getTime() - startDate.getTime()) / (7 * 86400000)) + 1);
 }
 
-// Auto-derive ramp weeks (time to reach full velocity) from a SKU's formation and ounces.
-// Smaller sizes and trial-type formations gain traction faster; bulk/club sizes slower.
-function ncDefaultRampWeeks(sku, baseWeeks) {
-  let ounceFactor = 1;
-  if (sku.ounces != null && sku.ounces > 0) {
-    ounceFactor = Math.max(0.4, Math.min(2.5, sku.ounces / 16)); // 16oz reference
+// Stable key for a SKU's Formation + Ounces combination.
+function ncComboKey(s) {
+  const f = (s.formation || '').trim();
+  const oz = (s.ounces != null && s.ounces > 0) ? s.ounces : '';
+  return f + '|' + oz;
+}
+
+// Distinct Formation + Ounces combinations across loaded SKUs, in first-seen order.
+function ncComboList() {
+  const seen = new Map();
+  for (const s of state.newCustomer.skus) {
+    const k = ncComboKey(s);
+    if (!seen.has(k)) {
+      seen.set(k, { key: k, formation: (s.formation || '').trim(),
+        ounces: (s.ounces != null && s.ounces > 0) ? s.ounces : null, count: 0 });
+    }
+    seen.get(k).count++;
   }
-  const f = (sku.formation || '').toLowerCase();
-  let formFactor = 1;
-  if (/trial|sample|travel|single|snack|treat|stick|mini|trav/.test(f)) formFactor = 0.5;
-  else if (/family|club|bulk|value|jumbo|mega|large|multi|case/.test(f)) formFactor = 1.5;
-  return Math.max(1, Math.min(104, Math.round(baseWeeks * ounceFactor * formFactor)));
+  return Array.from(seen.values());
+}
+
+// Ramp weeks applied when a SKU has no per-row override: its combo's manual rate, else base.
+function ncComboRampWeeks(s, baseWeeks) {
+  const v = state.newCustomer.rampCombos[ncComboKey(s)];
+  return (v != null && v > 0) ? v : Math.max(1, baseWeeks || 8);
+}
+
+// Ramp weeks to use for a SKU: per-SKU override first, then its Formation+Ounces combo rate.
+function ncRampWeeksFor(s, baseWeeks) {
+  if (s.rampWeeks != null && s.rampWeeks > 0) return s.rampWeeks;
+  return ncComboRampWeeks(s, baseWeeks);
 }
 
 // Velocity multiplier for a SKU at a given weeks-since-launch (0-based) under the ramp curve.
@@ -5998,6 +6051,7 @@ function ncHandleFile(file) {
         return;
       }
       state.newCustomer.skus = result.skus;
+      state.newCustomer.rampCombos = result.rampCombos || {};
       if (result.scenario) ncApplyScenario(result.scenario);
       // If every SKU has a launch date, anchor the scenario ship date to the earliest one
       // (unless a Scenario sheet already supplied an explicit start date).
@@ -6037,6 +6091,7 @@ function loadNcDemo() {
     ncMakeSku({ productNumber:'FDF-001', productName:'Feline Indoor Dry Kibble 12lb', brand:'Feline', type:'Dry Food', formation:'Kibble', ounces:192, unitsPerCase:1, innerPack:0, stores:1500, velocity:0.6, casesPerLayer:8, minPresentationUnits:2, initialCases:700, launchDate:wk2 }),
     ncMakeSku({ productNumber:'FWF-001', productName:'Feline Select Wet Pate 12pk', brand:'Feline', type:'Wet Food', formation:'Pate', ounces:3, unitsPerCase:12, innerPack:0, stores:1500, velocity:5, casesPerLayer:10, minPresentationUnits:24, initialCases:600, launchDate:wk2 }),
   ];
+  state.newCustomer.rampCombos = {};
   document.getElementById('nc-sku-status').textContent = state.newCustomer.skus.length + ' demo SKUs loaded';
   document.getElementById('nc-config-section').classList.remove('hidden');
   ncRenderSkuTable();
@@ -6055,16 +6110,17 @@ function ncRenderSkuTable() {
   const baseWeeks = ncToNum(document.getElementById('nc-ramp-base-weeks') ? document.getElementById('nc-ramp-base-weeks').value : null) || 8;
   const inp = (i, field, val, step) => '<input type="number" step="' + (step||'any') + '" min="0" value="' + (val != null ? val : '') + '" oninput="ncUpdateSku(' + i + ',\'' + field + '\',this.value)">';
   let html = '<thead><tr>' +
-    '<th>Product #</th><th>Name</th><th>Ounces</th><th>Units/Case</th><th>Inner/Case</th><th>Total Units/Case</th><th>Cases/Layer</th><th>Min Presentation (eaches)</th><th>Stores</th><th>Velocity (u/store/wk)</th>' +
+    '<th>Product #</th><th>Name</th><th>Ounces</th><th>Cost $</th><th>Units/Case</th><th>Inner/Case</th><th>Total Units/Case</th><th>Cases/Layer</th><th>Min Presentation (eaches)</th><th>Stores</th><th>Velocity (u/store/wk)</th>' +
     '<th>Initial Ship (cases)</th><th>Launch Date</th>' +
     (rampOn ? '<th>Ramp Wks</th>' : '') + '<th>Target WOS</th>' +
     '</tr></thead><tbody>';
   skus.forEach((s, i) => {
-    const autoRamp = ncDefaultRampWeeks(s, baseWeeks);
+    const comboRamp = ncComboRampWeeks(s, baseWeeks);
     html += '<tr>' +
       '<td style="font-weight:600;">' + sanitize(s.productNumber) + '</td>' +
       '<td style="max-width:200px; overflow:hidden; text-overflow:ellipsis;">' + sanitize(s.productName) + '</td>' +
       '<td><input type="number" step="any" min="0" placeholder="—" value="' + (s.ounces != null ? s.ounces : '') + '" oninput="ncUpdateSku(' + i + ',\'ounces\',this.value)"></td>' +
+      '<td><input type="number" step="any" min="0" placeholder="—" value="' + (s.cost != null ? s.cost : '') + '" oninput="ncUpdateSku(' + i + ',\'cost\',this.value)"></td>' +
       '<td>' + inp(i, 'unitsPerCase', s.unitsPerCase, '1') + '</td>' +
       '<td><input type="number" step="1" min="0" placeholder="0" value="' + (s.innerPack || '') + '" oninput="ncUpdateSku(' + i + ',\'innerPack\',this.value)"></td>' +
       '<td id="nc-tupc-' + i + '" style="text-align:right; color:#6b7280;">' + ncFmt(ncEffectiveUnitsPerCase(s)) + '</td>' +
@@ -6074,15 +6130,48 @@ function ncRenderSkuTable() {
       '<td>' + inp(i, 'velocity', s.velocity) + '</td>' +
       '<td>' + inp(i, 'initialCases', s.initialCases, '1') + '</td>' +
       '<td><input type="date" value="' + sanitize(s.launchDate || '') + '" oninput="ncUpdateSku(' + i + ',\'launchDate\',this.value)" style="width:130px;"></td>' +
-      (rampOn ? '<td><input type="number" step="1" min="1" placeholder="auto (' + autoRamp + ')" value="' + (s.rampWeeks != null ? s.rampWeeks : '') + '" oninput="ncUpdateSku(' + i + ',\'rampWeeks\',this.value)"></td>' : '') +
+      (rampOn ? '<td><input type="number" step="1" min="1" placeholder="combo (' + comboRamp + ')" value="' + (s.rampWeeks != null ? s.rampWeeks : '') + '" oninput="ncUpdateSku(' + i + ',\'rampWeeks\',this.value)"></td>' : '') +
       '<td><input type="number" step="any" min="0" placeholder="default" value="' + (s.targetWos != null ? s.targetWos : '') + '" oninput="ncUpdateSku(' + i + ',\'targetWos\',this.value)"></td>' +
       '</tr>';
   });
   html += '</tbody>';
   document.getElementById('nc-sku-table').innerHTML = html;
+  ncRenderRampCombos();
 }
 
-const NC_NULLABLE_FIELDS = new Set(['targetWos', 'ounces', 'rampWeeks']);
+// Render the editable "Ramp Weeks by Formation & Ounces" grid below the ramp config.
+function ncRenderRampCombos() {
+  const wrap = document.getElementById('nc-ramp-combos-wrap');
+  if (!wrap) return;
+  const on = document.getElementById('nc-ramp-enabled') ? document.getElementById('nc-ramp-enabled').checked : true;
+  const combos = ncComboList();
+  if (!on || !combos.length) { wrap.innerHTML = ''; return; }
+  const base = ncToNum(document.getElementById('nc-ramp-base-weeks').value) || 8;
+  let html = '<div class="label" style="margin-bottom:4px;">Ramp Weeks by Formation &amp; Ounces</div>' +
+    '<div class="text-xs text-gray-400" style="margin-bottom:8px;">One row per unique Formation + Ounces combination in your SKUs. Set the weeks each takes to reach full velocity. Blank = Base Ramp Weeks (' + base + ').</div>' +
+    '<table class="data-grid" style="width:auto;"><thead><tr><th>Formation</th><th>Ounces</th><th>SKUs</th><th>Ramp Wks</th></tr></thead><tbody>';
+  combos.forEach((c, idx) => {
+    const v = state.newCustomer.rampCombos[c.key];
+    html += '<tr>' +
+      '<td>' + sanitize(c.formation || '—') + '</td>' +
+      '<td style="text-align:right;">' + (c.ounces != null ? ncFmt(c.ounces) : '—') + '</td>' +
+      '<td style="text-align:right; color:#6b7280;">' + c.count + '</td>' +
+      '<td><input type="number" step="1" min="1" placeholder="' + base + '" value="' + (v != null ? v : '') + '" oninput="ncUpdateRampCombo(' + idx + ',this.value)" style="width:90px;"></td>' +
+      '</tr>';
+  });
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+}
+
+// Store/clear a manual ramp rate for the combo at the given index in ncComboList() order.
+function ncUpdateRampCombo(idx, value) {
+  const c = ncComboList()[idx];
+  if (!c) return;
+  if (value === '' || value == null) delete state.newCustomer.rampCombos[c.key];
+  else state.newCustomer.rampCombos[c.key] = Number(value);
+}
+
+const NC_NULLABLE_FIELDS = new Set(['targetWos', 'ounces', 'rampWeeks', 'cost']);
 function ncUpdateSku(i, field, value) {
   const s = state.newCustomer.skus[i];
   if (!s) return;
@@ -6098,6 +6187,9 @@ function ncUpdateSku(i, field, value) {
     const cell = document.getElementById('nc-tupc-' + i);
     if (cell) cell.textContent = ncFmt(ncEffectiveUnitsPerCase(s));
   }
+  // Changing ounces re-groups the Formation+Ounces combos — refresh that grid only
+  // (leaves the SKU-table inputs and focus untouched).
+  if (field === 'ounces') ncRenderRampCombos();
 }
 
 // Set every SKU's Target WOS to the scenario default (materializes the blank "default" cells).
@@ -6162,7 +6254,7 @@ function runNcSimulation() {
     const orderInc = (roundMode === 'layer' && s.casesPerLayer > 0) ? s.casesPerLayer : 1;
     // Minimum shelf presentation (eaches) → a case-level inventory floor applied before WOS
     const minPresCases = (s.minPresentationUnits > 0) ? s.minPresentationUnits / casePack : 0;
-    const rampWeeks = rampOn ? ((s.rampWeeks != null && s.rampWeeks > 0) ? s.rampWeeks : ncDefaultRampWeeks(s, rampBaseWeeks)) : 1;
+    const rampWeeks = rampOn ? ncRampWeeksFor(s, rampBaseWeeks) : 1;
 
     const arrivals = {}; // week => cases received
     if (s.initialCases > 0) arrivals[launchWeek] = (arrivals[launchWeek] || 0) + s.initialCases;
@@ -6509,6 +6601,7 @@ function exportNewCustomerAssumptions() {
       PRODUCTNAME: s.productName,
       BRAND: s.brand, TYPE: s.type, FORMATION: s.formation,
       OUNCES: blank(s.ounces),
+      COST: blank(s.cost),
       UNITSPERCASE: s.unitsPerCase,
       INNERPACKCASE: s.innerPack || 0,
       CASESPERLAYER: s.casesPerLayer,
@@ -6517,7 +6610,7 @@ function exportNewCustomerAssumptions() {
       VELOCITY: s.velocity,
       INITIAL_SHIPMENT_CASES: s.initialCases,
       LAUNCH_DATE: s.launchDate || '',
-      RAMP_WEEKS: blank(s.rampWeeks),   // blank = auto from formation + ounces
+      RAMP_WEEKS: blank(s.rampWeeks),   // blank = use the Formation+Ounces combo / base rate
       TARGET_WOS: blank(s.targetWos),   // blank = use scenario default
     }));
     const wb = XLSX.utils.book_new();
@@ -6540,6 +6633,15 @@ function exportNewCustomerAssumptions() {
       { SETTING: 'MAX_MONTHLY_ST_PCT', VALUE: g('nc-max-st-month').value },
     ];
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(scenarioRows), 'Scenario');
+
+    // Ramp Rates sheet — one row per Formation+Ounces combo with a manual rate set
+    const rampRows = ncComboList()
+      .map(c => ({ combo: c, weeks: nc.rampCombos[c.key] }))
+      .filter(r => r.weeks != null && r.weeks > 0)
+      .map(r => ({ FORMATION: r.combo.formation, OUNCES: blank(r.combo.ounces), RAMP_WEEKS: r.weeks }));
+    if (rampRows.length) {
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rampRows), 'Ramp Rates');
+    }
 
     const name = (nc.customerName || document.getElementById('nc-customer-name').value || 'new_customer').replace(/[^a-z0-9]+/gi, '_');
     XLSX.writeFile(wb, 'new_customer_assumptions_' + name + '.xlsx');
